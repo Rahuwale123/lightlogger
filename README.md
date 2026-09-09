@@ -58,6 +58,31 @@ They render as a collapsible tree — click to expand, nested groups indent, a r
 | **Bounded memory** | A fixed-size ring buffer — lightlogger can never be the reason your app runs out of RAM |
 | **Zero dependencies** | Python standard library only, from the HTTP server to the JSON encoding |
 
+## API reference
+
+| Function | Description | Example |
+|---|---|---|
+| `start(...)` | Starts the dashboard on a background thread. See parameters below. Calling it again while already running is a no-op. | `lightlogger.start(port=8080, open_browser=True)` |
+| `stop()` | Stops the server and detaches the logging handler. Mostly for tests/notebooks. | `lightlogger.stop()` |
+| `debug(msg, data=None)` | Logs a debug-level message (grey). | `lightlogger.debug("cache miss", data={"key": "user:42"})` |
+| `info(msg, data=None)` | Logs an info-level message (blue). | `lightlogger.info("user logged in")` |
+| `warn(msg, data=None)` | Logs a warn-level message (yellow). | `lightlogger.warn("retrying after timeout")` |
+| `error(msg, data=None)` | Logs an error-level message (red). | `lightlogger.error("payment failed", data={"order_id": 123})` |
+| `var(name, value)` | Logs any variable as an expandable JSON blob. | `lightlogger.var("cart", cart_dict)` |
+| `request(method, url, status, duration_ms)` | Logs one HTTP request/response. Level follows the status code: `< 400` → info, `4xx` → warn, `5xx` → error. | `lightlogger.request("GET", "/api/users", 500, 812.0)` → logs as **error** |
+| `group(name)` | Context manager for nested, collapsible log groups. Thread- and async-safe. | `` with lightlogger.group("checkout"): ... `` |
+| `help()` | Prints this reference to your terminal. | `lightlogger.help()` |
+
+`start()` parameters:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `port` | `4356` | Preferred port; auto-increments to the next free one if taken |
+| `host` | `"127.0.0.1"` | Bind address — `"0.0.0.0"` is an explicit, loudly-warned opt-in for LAN exposure |
+| `max_logs` | `5000` | Ring buffer size — the most recent N records are kept, oldest dropped first |
+| `capture_logging` | `True` | Attach a handler to the root logger so existing `logging` calls appear automatically |
+| `open_browser` | `False` | Open the dashboard in your default browser as soon as it's live |
+
 ## Built-in help
 
 Forgot the API? It's in the package, not just this README:

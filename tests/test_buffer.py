@@ -173,6 +173,7 @@ class TestPublicLoggingFunctions:
     def test_request_builds_message_and_structured_data(self) -> None:
         lightlogger.request("GET", "/api/users", 200, 12.5)
         record = lightlogger._buffer.snapshot()[-1]
+        assert record["level"] == "info"
         assert record["message"] == "GET /api/users 200 12.5ms"
         assert record["data"] == {
             "method": "GET",
@@ -180,6 +181,24 @@ class TestPublicLoggingFunctions:
             "status": 200,
             "duration_ms": 12.5,
         }
+
+    @pytest.mark.parametrize(
+        ("status", "expected_level"),
+        [
+            (200, "info"),
+            (301, "info"),
+            (399, "info"),
+            (400, "warn"),
+            (404, "warn"),
+            (499, "warn"),
+            (500, "error"),
+            (503, "error"),
+        ],
+    )
+    def test_request_derives_level_from_status_code(self, status: int, expected_level: str) -> None:
+        lightlogger.request("GET", "/api/users", status, 1.0)
+        record = lightlogger._buffer.snapshot()[-1]
+        assert record["level"] == expected_level
 
     def test_logging_is_append_only_across_calls(self) -> None:
         lightlogger.info("first")

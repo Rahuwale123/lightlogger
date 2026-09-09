@@ -15,7 +15,7 @@ from lightlogger.buffer import LogBuffer, LogRecord, _current_group_id, capture_
 from lightlogger.handler import LightloggerHandler
 from lightlogger.server import LightloggerServer, create_server, serve_in_background
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "start",
@@ -79,8 +79,10 @@ Public API
           lightlogger.var("cart", cart_dict)
 
   request(method, url, status, duration_ms)
-      Logs one HTTP request/response as a single formatted line.
+      Logs one HTTP request/response as a single formatted line. Level
+      follows the status code: <400 info, 4xx warn, 5xx error.
           lightlogger.request("GET", "/api/users", 200, 12.4)
+          lightlogger.request("POST", "/api/orders", 500, 812.0)  # -> error
 
   group(name)
       Context manager that groups related log lines into a collapsible
@@ -208,8 +210,14 @@ def var(name: str, value: Any) -> None:
 
 
 def request(method: str, url: str, status: int, duration_ms: float) -> None:
+    if status >= 500:
+        level = "error"
+    elif status >= 400:
+        level = "warn"
+    else:
+        level = "info"
     _emit(
-        "info",
+        level,
         f"{method} {url} {status} {duration_ms:.1f}ms",
         {"method": method, "url": url, "status": status, "duration_ms": duration_ms},
     )

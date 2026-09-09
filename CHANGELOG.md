@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flask/Django/FastAPI middleware integrations
 - Node.js port
 
+## [0.1.1] - 2026-09-09
+
+### Changed
+
+- `lightlogger.request()` now derives its log level from the HTTP status code instead of always logging at `info`: `< 400` → `info`, `4xx` → `warn`, `5xx` → `error`. A failed request now actually looks like a failure in the dashboard.
+
+### Fixed
+
+- README lacked a complete API reference — added a full table covering every public function (`start`, `stop`, `debug`, `info`, `warn`, `error`, `var`, `request`, `group`, `help`) with one-line descriptions, examples, and `start()`'s parameters (`port`, `host`, `max_logs`, `capture_logging`, `open_browser`).
+
 ## [0.1.0] - 2026-09-09
 
 Initial release.

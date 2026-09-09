@@ -204,8 +204,9 @@ lightlogger.info("user logged in")</code></pre>
 
 <div class="fn-block">
 <h3><code>request(method, url, status, duration_ms)</code></h3>
-<p>Logs one HTTP request/response as a single formatted line.</p>
-<pre><code>lightlogger.request("GET", "/api/users", 200, 12.4)</code></pre>
+<p>Logs one HTTP request/response as a single formatted line. Level follows the status code: <code>&lt;400</code> info, <code>4xx</code> warn, <code>5xx</code> error.</p>
+<pre><code>lightlogger.request("GET", "/api/users", 200, 12.4)
+lightlogger.request("POST", "/api/orders", 500, 812.0)  # -&gt; error</code></pre>
 </div>
 
 <div class="fn-block">
