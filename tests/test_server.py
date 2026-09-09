@@ -103,3 +103,15 @@ def test_start_is_idempotent_while_already_running() -> None:
     first_port = _bound_port()
     lightlogger.start(port=first_port + 50)  # should be a no-op, not rebind
     assert _bound_port() == first_port
+
+
+def test_max_logs_is_applied_to_the_buffer_end_to_end() -> None:
+    lightlogger.start(max_logs=100)
+    for i in range(500):
+        lightlogger.info(f"log {i}")
+    status, body = _get(_bound_port(), "/api/logs")
+    assert status == 200
+    records = json.loads(body)
+    assert len(records) == 100
+    assert records[0]["message"] == "log 400"
+    assert records[-1]["message"] == "log 499"

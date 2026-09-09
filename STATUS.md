@@ -1,26 +1,25 @@
-# lightlogger — status (Phase 2 of 7)
+# lightlogger — status (Phase 3 of 7)
 
-What exists right now: a real, running HTTP server. `lightlogger.start()` binds a live `ThreadingHTTPServer` and `/api/logs` returns real JSON — the first genuinely visible milestone. UI is still a placeholder page; live streaming isn't wired in yet.
+What exists right now: a real dark-theme dashboard page that polls `/api/logs` every 2 seconds and renders live rows. First time the product is actually watchable end-to-end (with a 2s delay — SSE removes that in Phase 4).
 
 ## What actually works today
 
-- `lightlogger.start()` binds `127.0.0.1:4356` by default (auto-incrementing to the next free port on conflict), runs the server in a daemon thread, and prints `lightlogger UI → http://127.0.0.1:<port>`
-- `lightlogger.stop()` calls `shutdown()` + `server_close()` — the port is actually freed, confirmed by re-binding it with a raw socket right after stop
-- `GET /api/logs` returns the live ring buffer as JSON (`json.dumps(..., default=str)`, so arbitrary `data` objects never crash serialization); `GET /` serves the (still placeholder) `static/index.html`; anything else 404s
-- Binding is `127.0.0.1`-only by default; passing `host="0.0.0.0"` prints a loud warning before binding — verified in code (grep) and by triggering the warning path directly
-- Restart safety verified: `start()` → `stop()` → `start()` again in the same process works cleanly, no hang, no "address already in use"
-- Port auto-increment verified with two real, separate, concurrently-running processes: process A holds `4356`, process B auto-picks `4357`, each independently serves its own logs over real HTTP — no crash, no collision
-- `start()` is idempotent while already running (a no-op, not an error) — a judgment call not explicitly specified in the brief, covered by its own test
-- 23 tests passing (was 17), `ruff check`, `ruff format --check`, and `mypy --strict` all clean
+- `static/index.html` is a real, self-contained dark-theme page: fetches `/api/logs` every 2s, renders `time | LEVEL | message` rows (grey/blue/yellow/red for debug/info/warn/error), auto-scrolls to bottom as new rows arrive
+- Confirmed **zero external URLs** anywhere in the file (`grep -i http` and CDN/script/link greps both return no matches) — fully offline-capable, vanilla JS, no build step
+- Polling is correctness-checked against a real gotcha: `/api/logs` is a bounded ring buffer, so once it's full its length never grows again even as content keeps rotating. A naive "did the array length change" poll would silently freeze forever past that point. The JS instead tracks the last-rendered record by value and appends only what's new since it, falling back to a full re-render if the backlog rotated past what it last saw
+- Statelessness verified at the HTTP level: two independent, cookie-free `GET /api/logs` calls return identical backlogs; zero `cookie`/`session`/`localStorage` anywhere in the code — a closed-and-reopened tab just sees the buffer again, no client or server state involved
+- `lightlogger.start(max_logs=N)` is now wired for real: `LogBuffer.set_maxlen()` rebuilds the deque in place (preserving the object identity, keeping newest records on shrink, all records on grow). Verified end-to-end: `start(max_logs=100)` + flooding 500 logs → `/api/logs` returns exactly the newest 100
+- 27 tests passing (was 23), `ruff check`, `ruff format --check`, and `mypy --strict` all clean
 
 ## What's deliberately not wired up yet
 
-- `max_logs`, `capture_logging`, `open_browser` params on `start()` are accepted (matching the public API signature) but not yet connected to anything — `max_logs` needs the Phase 1 buffer touched again, `capture_logging`/`LightloggerHandler` is Phase 5, `open_browser` has no assigned phase yet. Not forgotten, just sequenced.
-- `/api/stream` (SSE) and `/api/clear` are not built yet — Phase 4 and later. `/` and `/api/logs` only, per this phase's scope.
+- `capture_logging`, `open_browser` params on `start()` are still accepted but inert — Phase 5 and unscoped respectively
+- No pause/search/filter/expand/clear/download controls in the UI yet — Phase 6. Deliberately "ugly is fine, working matters" for this phase
+- `/api/stream` (SSE) and `/api/clear` still don't exist — Phase 4 removes the 2s polling delay
 
 ## What's set up around the code
 
-- **Layout:** `src/lightlogger/` (src-layout, Hatchling build backend); `buffer.py` and `server.py` now have real logic, `handler.py`/`sse.py` are still stubs, plus a placeholder `static/index.html`
+- **Layout:** `src/lightlogger/` (src-layout, Hatchling build backend); `buffer.py`, `server.py`, and now `static/index.html` all have real logic; `handler.py`/`sse.py` are still stubs
 - **CI** (`.github/workflows/ci.yml`): runs the same lint/type/test gate on Python 3.9–3.13 on every push/PR
 - **Publish** (`.github/workflows/publish.yml`): builds + publishes to PyPI via Trusted Publishing (OIDC) when a GitHub Release is cut — no API token stored anywhere
 - **Docs:** MIT LICENSE, CHANGELOG (Keep a Changelog format), CONTRIBUTING.md, a placeholder README (real one written at Phase 7 with the demo GIF)
@@ -32,6 +31,6 @@ Original name `lightlog` was already taken on PyPI (an unrelated C++-backed logg
 
 ## Not built yet
 
-The polling UI (Phase 3), live SSE streaming wired into the server (Phase 4), stdlib `logging` capture (Phase 5), UI polish — search/filter/pause/export (Phase 6), and the real coverage target + README + PyPI publish (Phase 7).
+Live SSE streaming wired into the server (Phase 4), stdlib `logging` capture (Phase 5), UI polish — search/filter/pause/export (Phase 6), and the real coverage target + README + PyPI publish (Phase 7).
 
 _Update this file at the end of each phase._

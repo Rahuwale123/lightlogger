@@ -3,9 +3,180 @@
 <head>
 <meta charset="utf-8" />
 <title>lightlogger</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #12141a;
+    color: #d6d9e0;
+    font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
+  }
+  header {
+    padding: 10px 16px;
+    border-bottom: 1px solid #262a35;
+    background: #171922;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e6e9f0;
+  }
+  #log {
+    height: calc(100vh - 42px);
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .row {
+    display: flex;
+    gap: 10px;
+    padding: 4px 16px;
+    border-bottom: 1px solid #1c1f28;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .row:hover {
+    background: #171a22;
+  }
+  .time {
+    flex: 0 0 auto;
+    color: #6b7280;
+  }
+  .level {
+    flex: 0 0 auto;
+    width: 5ch;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .message {
+    flex: 1 1 auto;
+  }
+  .level-debug { color: #9aa0a6; }
+  .level-info  { color: #4da3ff; }
+  .level-warn  { color: #e0c341; }
+  .level-error { color: #f05454; }
+  #empty {
+    padding: 16px;
+    color: #6b7280;
+  }
+</style>
 </head>
 <body>
-<!-- Placeholder. Real dashboard UI built in Phase 3 (polling) and Phase 6 (full polish). -->
-<p>lightlogger UI — coming in Phase 3.</p>
+<header>
+  <h1>lightlogger</h1>
+</header>
+<div id="log">
+  <p id="empty">Waiting for logs…</p>
+</div>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  var emptyEl = document.getElementById('empty');
+  // Identifies the last record we've already rendered, so a poll can append
+  // just the new tail. Compared by value (no id field on LogRecord) rather
+  // than by array length: /api/logs is a bounded ring buffer, so once it's
+  // full its length stops changing even as new logs keep pushing old ones
+  // out, and a pure length check would silently stop appending forever.
+  var lastSeen = null;
+
+  function sameRecord(a, b) {
+    return (
+      !!a &&
+      !!b &&
+      a.time === b.time &&
+      a.line === b.line &&
+      a.file === b.file &&
+      a.message === b.message
+    );
+  }
+
+  function levelClass(level) {
+    switch (level) {
+      case 'debug': return 'level-debug';
+      case 'info': return 'level-info';
+      case 'warn': return 'level-warn';
+      case 'error': return 'level-error';
+      default: return 'level-info';
+    }
+  }
+
+  function formatTime(seconds) {
+    return new Date(seconds * 1000).toLocaleTimeString();
+  }
+
+  function appendRow(record) {
+    var row = document.createElement('div');
+    row.className = 'row';
+
+    var time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = formatTime(record.time);
+
+    var level = document.createElement('span');
+    level.className = 'level ' + levelClass(record.level);
+    level.textContent = record.level;
+
+    var message = document.createElement('span');
+    message.className = 'message';
+    message.textContent = record.message;
+
+    row.appendChild(time);
+    row.appendChild(level);
+    row.appendChild(message);
+    logEl.appendChild(row);
+  }
+
+  function poll() {
+    fetch('/api/logs')
+      .then(function (res) { return res.json(); })
+      .then(function (records) {
+        if (records.length === 0) {
+          return;
+        }
+
+        var startIndex = 0;
+        if (lastSeen !== null) {
+          var matchIndex = -1;
+          for (var i = records.length - 1; i >= 0; i--) {
+            if (sameRecord(records[i], lastSeen)) {
+              matchIndex = i;
+              break;
+            }
+          }
+          if (matchIndex === -1) {
+            // Buffer rotated past what we knew (or was cleared/resized):
+            // we can't tell what's new, so re-render from scratch.
+            logEl.innerHTML = '';
+            startIndex = 0;
+          } else {
+            startIndex = matchIndex + 1;
+          }
+        }
+
+        if (startIndex >= records.length) {
+          return; // nothing new since last poll
+        }
+
+        if (emptyEl) {
+          emptyEl.remove();
+          emptyEl = null;
+        }
+        for (var j = startIndex; j < records.length; j++) {
+          appendRow(records[j]);
+        }
+        lastSeen = records[records.length - 1];
+        logEl.scrollTop = logEl.scrollHeight;
+      })
+      .catch(function () {
+        // server may be mid-restart; next poll will retry
+      });
+  }
+
+  poll();
+  setInterval(poll, 2000);
+})();
+</script>
 </body>
 </html>

@@ -37,6 +37,14 @@ class LogBuffer:
         self._lock = threading.Lock()
         self._subscribers: set[Queue[LogRecord]] = set()
 
+    def set_maxlen(self, maxlen: int) -> None:
+        # Rebuild in place rather than swap self._records for a fresh deque:
+        # deque(existing_deque, maxlen=N) already keeps only the newest N
+        # items, and callers who stashed a reference to this LogBuffer (e.g.
+        # future SSE subscribers) never observe a different object.
+        with self._lock:
+            self._records = deque(self._records, maxlen=maxlen)
+
     def add(self, record: LogRecord) -> None:
         with self._lock:
             self._records.append(record)

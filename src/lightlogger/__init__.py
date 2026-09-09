@@ -54,6 +54,8 @@ def start(
     if _httpd is not None:
         return  # already running; start() is idempotent, not an error
 
+    _buffer.set_maxlen(max_logs)
+
     if host == "0.0.0.0":  # noqa: S104
         print(
             "lightlogger WARNING: binding to 0.0.0.0 exposes your logs to your "

@@ -76,6 +76,31 @@ class TestLogBuffer:
         with pytest.raises(Empty):
             sub.get_nowait()
 
+    def test_set_maxlen_truncates_to_the_most_recent_records(self) -> None:
+        buf = LogBuffer(maxlen=10)
+        for i in range(10):
+            buf.add(make_record(str(i)))
+        buf.set_maxlen(3)
+        assert len(buf) == 3
+        assert [r["message"] for r in buf.snapshot()] == ["7", "8", "9"]
+
+    def test_set_maxlen_enforces_the_new_bound_on_future_appends(self) -> None:
+        buf = LogBuffer(maxlen=10)
+        buf.set_maxlen(2)
+        for i in range(5):
+            buf.add(make_record(str(i)))
+        assert len(buf) == 2
+        assert [r["message"] for r in buf.snapshot()] == ["3", "4"]
+
+    def test_set_maxlen_growing_keeps_existing_records(self) -> None:
+        buf = LogBuffer(maxlen=2)
+        buf.add(make_record("a"))
+        buf.add(make_record("b"))
+        buf.set_maxlen(10)
+        for i in range(5):
+            buf.add(make_record(str(i)))
+        assert [r["message"] for r in buf.snapshot()] == ["a", "b", "0", "1", "2", "3", "4"]
+
 
 def test_capture_caller_returns_this_file_and_line() -> None:
     line_before = sys._getframe().f_lineno
