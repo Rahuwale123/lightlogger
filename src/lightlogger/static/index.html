@@ -3,11 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <title>lightlogger</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171922'/%3E%3Crect x='3' y='4' width='10' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='7' width='7' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='10' width='9' height='2' rx='1' fill='%234da3ff'/%3E%3C/svg%3E" />
 <style>
+  :root {
+    --accent: #9d8cff;
+  }
   html, body {
     margin: 0;
     padding: 0;
     height: 100%;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
     background: #12141a;
     color: #d6d9e0;
     font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
@@ -15,6 +23,8 @@
   header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
     gap: 8px;
     padding: 10px 16px;
     border-bottom: 1px solid #262a35;
@@ -25,6 +35,52 @@
     font-size: 14px;
     font-weight: 600;
     color: #e6e9f0;
+    white-space: nowrap;
+  }
+  header input[type="text"],
+  header select,
+  header button {
+    background: #12141a;
+    border: 1px solid #262a35;
+    color: #d6d9e0;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  header input[type="text"] {
+    flex: 1 1 160px;
+    min-width: 120px;
+    max-width: 280px;
+  }
+  header button {
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  header button:hover {
+    background: #1c1f28;
+  }
+  /* Pause button while actually paused -- the one "toggled on" control state. */
+  header button.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(157, 140, 255, 0.12);
+  }
+  header input:focus-visible,
+  header select:focus-visible,
+  header button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  header input[type="text"]:focus-visible {
+    border-color: var(--accent);
+  }
+  .counter {
+    margin-left: auto;
+    color: #6b7280;
+    font-size: 12px;
+    white-space: nowrap;
   }
   .status-dot {
     width: 8px;
@@ -37,9 +93,20 @@
   }
   .status-reconnecting {
     background: #f05454;
+    animation: pulse-dot 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status-reconnecting {
+      animation: none;
+    }
   }
   #log {
-    height: calc(100vh - 42px);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     padding: 4px 0;
   }
@@ -51,9 +118,17 @@
     font-size: 13px;
     white-space: pre-wrap;
     word-break: break-word;
+    cursor: pointer;
   }
   .row:hover {
     background: #171a22;
+  }
+  /* .row's own display:flex has the same specificity as the browser default
+     [hidden]{display:none} and wins on source order, so hiding a filtered row
+     needs an explicit, more-specific override here. */
+  .row[hidden],
+  .detail[hidden] {
+    display: none;
   }
   .time {
     flex: 0 0 auto;
@@ -72,6 +147,28 @@
   .level-info  { color: #4da3ff; }
   .level-warn  { color: #e0c341; }
   .level-error { color: #f05454; }
+  /* Left border encodes which row this belongs to and its severity -- not decoration. */
+  .detail {
+    padding: 6px 16px 10px 13px;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid #1c1f28;
+    background: #14161d;
+    font-size: 12px;
+    color: #9aa0a6;
+  }
+  .detail-line {
+    padding: 1px 0;
+  }
+  .detail-data {
+    margin: 4px 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #d6d9e0;
+  }
+  .detail-debug { border-left-color: #9aa0a6; }
+  .detail-info  { border-left-color: #4da3ff; }
+  .detail-warn  { border-left-color: #e0c341; }
+  .detail-error { border-left-color: #f05454; }
   #empty {
     padding: 16px;
     color: #6b7280;
@@ -81,6 +178,18 @@
 <body>
 <header>
   <h1>lightlogger</h1>
+  <input id="search" type="text" placeholder="Search messages…" autocomplete="off" />
+  <select id="level-filter">
+    <option value="">All levels</option>
+    <option value="debug">debug</option>
+    <option value="info">info</option>
+    <option value="warn">warn</option>
+    <option value="error">error</option>
+  </select>
+  <button id="pause-btn" type="button">Pause</button>
+  <button id="clear-btn" type="button">Clear</button>
+  <button id="download-btn" type="button">Download</button>
+  <span id="counter" class="counter">0 logs</span>
   <span id="status-dot" class="status-dot status-reconnecting" title="connecting…"></span>
 </header>
 <div id="log">
@@ -91,12 +200,27 @@
   var logEl = document.getElementById('log');
   var emptyEl = document.getElementById('empty');
   var statusDot = document.getElementById('status-dot');
-  // Identifies the last record we've already rendered, so a poll can append
-  // just the new tail. Compared by value (no id field on LogRecord) rather
-  // than by array length: /api/logs is a bounded ring buffer, so once it's
-  // full its length stops changing even as new logs keep pushing old ones
-  // out, and a pure length check would silently stop appending forever.
+  var searchInput = document.getElementById('search');
+  var levelSelect = document.getElementById('level-filter');
+  var pauseBtn = document.getElementById('pause-btn');
+  var clearBtn = document.getElementById('clear-btn');
+  var downloadBtn = document.getElementById('download-btn');
+  var counterEl = document.getElementById('counter');
+
+  // Identifies the last record we've already accounted for (rendered OR
+  // buffered while paused), so a backlog diff on reconnect can't re-ingest
+  // the same record twice. Compared by value (no id field on LogRecord)
+  // rather than by array length: /api/logs is a bounded ring buffer, so once
+  // it's full its length stops changing even as new logs keep pushing old
+  // ones out, and a pure length check would silently stop appending forever.
   var lastSeen = null;
+
+  var searchTerm = '';
+  var levelFilter = '';
+  var paused = false;
+  var pendingWhilePaused = [];
+  var allEntries = []; // every {row, detail, record, expanded} ever appended
+  var logCount = 0;
 
   function sameRecord(a, b) {
     return (
@@ -119,11 +243,83 @@
     }
   }
 
+  function detailClass(level) {
+    switch (level) {
+      case 'debug': return 'detail-debug';
+      case 'info': return 'detail-info';
+      case 'warn': return 'detail-warn';
+      case 'error': return 'detail-error';
+      default: return 'detail-info';
+    }
+  }
+
   function formatTime(seconds) {
     return new Date(seconds * 1000).toLocaleTimeString();
   }
 
+  function showEmptyState() {
+    emptyEl = document.createElement('p');
+    emptyEl.id = 'empty';
+    emptyEl.textContent = 'Waiting for logs…';
+    logEl.appendChild(emptyEl);
+  }
+
+  function updateCounter() {
+    counterEl.textContent = logCount + ' logs';
+  }
+
+  // Visible only if it passes both the search text AND the level filter.
+  // Also governs the detail panel: a filtered-out row's panel is force-hidden
+  // regardless of its own expand state, so it can't show orphaned below a
+  // hidden row.
+  function applyVisibility(entry) {
+    var matchesSearch = searchTerm === '' || entry.record.message.toLowerCase().indexOf(searchTerm) !== -1;
+    var matchesLevel = levelFilter === '' || entry.record.level === levelFilter;
+    var visible = matchesSearch && matchesLevel;
+    entry.row.hidden = !visible;
+    entry.detail.hidden = !visible || !entry.expanded;
+  }
+
+  function refilterAll() {
+    for (var i = 0; i < allEntries.length; i++) {
+      applyVisibility(allEntries[i]);
+    }
+  }
+
+  function buildDetailPanel(record) {
+    var detail = document.createElement('div');
+    detail.className = 'detail ' + detailClass(record.level);
+    detail.hidden = true;
+
+    var loc = document.createElement('div');
+    loc.className = 'detail-line';
+    loc.textContent = 'file: ' + (record.file || 'unknown') + ':' + record.line;
+
+    var logger = document.createElement('div');
+    logger.className = 'detail-line';
+    logger.textContent = 'logger: ' + record.logger_name;
+
+    var dataLabel = document.createElement('div');
+    dataLabel.className = 'detail-line';
+    dataLabel.textContent = 'data:';
+
+    var pre = document.createElement('pre');
+    pre.className = 'detail-data';
+    pre.textContent = record.data === null || record.data === undefined ? 'no data' : JSON.stringify(record.data, null, 2);
+
+    detail.appendChild(loc);
+    detail.appendChild(logger);
+    detail.appendChild(dataLabel);
+    detail.appendChild(pre);
+    return detail;
+  }
+
   function appendRow(record) {
+    if (emptyEl) {
+      emptyEl.remove();
+      emptyEl = null;
+    }
+
     var row = document.createElement('div');
     row.className = 'row';
 
@@ -142,7 +338,48 @@
     row.appendChild(time);
     row.appendChild(level);
     row.appendChild(message);
+
+    var detail = buildDetailPanel(record);
+    var entry = { row: row, detail: detail, record: record, expanded: false };
+
+    // Each row toggles its own panel independently -- a person may want to
+    // compare two expanded rows at once, so opening one must never close others.
+    row.addEventListener('click', function () {
+      entry.expanded = !entry.expanded;
+      applyVisibility(entry);
+    });
+
     logEl.appendChild(row);
+    logEl.appendChild(detail);
+    allEntries.push(entry);
+    applyVisibility(entry);
+
+    logCount += 1;
+    updateCounter();
+
+    if (!paused) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  // Single entry point for any record arriving from the server (live SSE
+  // message or a backlog-diff catch-up on reconnect): while paused, buffer it
+  // instead of rendering it, so a person pausing to read never silently loses
+  // records that arrived in the meantime.
+  function ingest(record) {
+    lastSeen = record;
+    if (paused) {
+      pendingWhilePaused.push(record);
+      updatePauseButtonLabel();
+      return;
+    }
+    appendRow(record);
+  }
+
+  function updatePauseButtonLabel() {
+    if (paused) {
+      pauseBtn.textContent = 'Resume (' + pendingWhilePaused.length + ')';
+    }
   }
 
   // Fetches the full backlog and appends only what's new since lastSeen,
@@ -170,6 +407,7 @@
             // Buffer rotated past what we knew (or was cleared/resized):
             // we can't tell what's new, so re-render from scratch.
             logEl.innerHTML = '';
+            allEntries = [];
             startIndex = 0;
           } else {
             startIndex = matchIndex + 1;
@@ -180,15 +418,9 @@
           return; // nothing new since last refresh
         }
 
-        if (emptyEl) {
-          emptyEl.remove();
-          emptyEl = null;
-        }
         for (var j = startIndex; j < records.length; j++) {
-          appendRow(records[j]);
+          ingest(records[j]);
         }
-        lastSeen = records[records.length - 1];
-        logEl.scrollTop = logEl.scrollHeight;
       })
       .catch(function () {
         // server may be mid-restart; next connect/refresh will retry
@@ -210,14 +442,81 @@
     } catch (e) {
       return; // malformed frame; drop it rather than crash the page
     }
-    if (emptyEl) {
-      emptyEl.remove();
-      emptyEl = null;
-    }
-    appendRow(record);
-    lastSeen = record;
-    logEl.scrollTop = logEl.scrollHeight;
+    ingest(record);
   }
+
+  searchInput.addEventListener('input', function () {
+    searchTerm = searchInput.value.toLowerCase();
+    refilterAll();
+  });
+
+  levelSelect.addEventListener('change', function () {
+    levelFilter = levelSelect.value;
+    refilterAll();
+  });
+
+  pauseBtn.addEventListener('click', function () {
+    if (paused) {
+      paused = false;
+      var buffered = pendingWhilePaused;
+      pendingWhilePaused = [];
+      pauseBtn.textContent = 'Pause';
+      pauseBtn.classList.remove('active');
+      for (var i = 0; i < buffered.length; i++) {
+        appendRow(buffered[i]);
+      }
+    } else {
+      paused = true;
+      pauseBtn.classList.add('active');
+      pauseBtn.textContent = 'Resume (' + pendingWhilePaused.length + ')';
+    }
+  });
+
+  // The poll/backlog-refresh path has an early return when the backlog is
+  // empty, so it would never notice a clear on its own -- this handler wipes
+  // the client-side view directly instead of relying on that path.
+  clearBtn.addEventListener('click', function () {
+    fetch('/api/clear', { method: 'POST' })
+      .then(function (res) {
+        if (!res.ok) {
+          return;
+        }
+        logEl.innerHTML = '';
+        allEntries = [];
+        pendingWhilePaused = [];
+        lastSeen = null;
+        logCount = 0;
+        updateCounter();
+        if (paused) {
+          pauseBtn.textContent = 'Resume (0)';
+        }
+        showEmptyState();
+      })
+      .catch(function () {
+        // server unreachable; leave the view as-is rather than pretending it cleared
+      });
+  });
+
+  // Always downloads a fresh /api/logs snapshot rather than whatever's
+  // currently rendered, which could be stale if paused or filtered.
+  downloadBtn.addEventListener('click', function () {
+    fetch('/api/logs')
+      .then(function (res) { return res.json(); })
+      .then(function (records) {
+        var blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'lightlogger-logs-' + Date.now() + '.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(function () {
+        // best-effort; nothing sensible to show for a failed download here
+      });
+  });
 
   // EventSource auto-reconnects on its own (driven by the server's
   // `retry: 3000`), firing onopen again each time it does. That single event

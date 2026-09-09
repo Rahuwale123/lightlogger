@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import webbrowser
 from typing import Any
 
 from lightlogger.buffer import LogBuffer, LogRecord, capture_caller
@@ -69,6 +70,9 @@ def start(
     _thread = serve_in_background(_httpd)
     bound_port = _httpd.server_address[1]
     print(f"lightlogger UI → http://{host}:{bound_port}")
+
+    if open_browser:
+        webbrowser.open(f"http://{host}:{bound_port}")
 
     if capture_logging:
         _logging_handler = LightloggerHandler(_buffer)

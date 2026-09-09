@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from http.client import HTTPResponse
+from unittest.mock import patch
 
 import pytest
 
@@ -45,6 +46,12 @@ def _url(port: int, path: str) -> str:
 def _get(port: int, path: str) -> tuple[int, bytes]:
     with urllib.request.urlopen(_url(port, path)) as resp:
         return resp.status, resp.read()
+
+
+def _post(port: int, path: str) -> int:
+    req = urllib.request.Request(_url(port, path), method="POST")
+    with urllib.request.urlopen(req) as resp:
+        return int(resp.status)
 
 
 def _bound_port() -> int:
@@ -241,3 +248,40 @@ class TestApiStream:
             time.sleep(0.05)
 
         assert len(lightlogger._buffer._subscribers) == before
+
+
+class TestApiClear:
+    def test_post_clears_the_buffer_end_to_end(self) -> None:
+        lightlogger.start()
+        lightlogger.info("first")
+        lightlogger.info("second")
+
+        status, body = _get(_bound_port(), "/api/logs")
+        assert status == 200
+        assert len(json.loads(body)) == 2
+
+        assert _post(_bound_port(), "/api/clear") == 200
+
+        status, body = _get(_bound_port(), "/api/logs")
+        assert status == 200
+        assert json.loads(body) == []
+
+    def test_unknown_post_route_is_404(self) -> None:
+        lightlogger.start()
+        req = urllib.request.Request(_url(_bound_port(), "/nope"), method="POST")
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req)
+        assert exc_info.value.code == 404
+
+
+class TestOpenBrowser:
+    def test_open_browser_false_by_default_does_not_open(self) -> None:
+        with patch("lightlogger.webbrowser.open") as mock_open:
+            lightlogger.start()
+            mock_open.assert_not_called()
+
+    def test_open_browser_true_opens_the_bound_url(self) -> None:
+        with patch("lightlogger.webbrowser.open") as mock_open:
+            lightlogger.start(open_browser=True)
+            port = _bound_port()
+            mock_open.assert_called_once_with(f"http://127.0.0.1:{port}")

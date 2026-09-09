@@ -53,6 +53,18 @@ def _make_handler(buffer: LogBuffer, heartbeat_interval: float) -> type[BaseHTTP
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
 
+        def do_POST(self) -> None:
+            if self.path == "/api/clear":
+                self._serve_clear()
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND)
+
+        def _serve_clear(self) -> None:
+            buffer.clear()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def _serve_index(self) -> None:
             html = (importlib.resources.files("lightlogger") / "static" / "index.html").read_bytes()
             self.send_response(HTTPStatus.OK)
