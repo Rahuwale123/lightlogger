@@ -27,7 +27,96 @@ __all__ = [
     "var",
     "request",
     "group",
+    "help",
 ]
+
+_HELP_TEXT = """\
+lightlogger -- live web dashboard for your Python logs
+========================================================
+
+  pip install lightlogger
+
+Quickstart
+----------
+  import lightlogger
+  lightlogger.start()
+
+That's it. Open the printed URL (default http://127.0.0.1:4356) and watch
+your logs stream in live, in a dark, searchable dashboard.
+
+Public API
+----------
+
+  start(port=4356, host="127.0.0.1", max_logs=5000,
+        capture_logging=True, open_browser=False)
+      Starts the dashboard server on a background thread. Calling it again
+      while already running is a no-op, not an error.
+          lightlogger.start(port=8080, open_browser=True)
+
+  stop()
+      Stops the server and detaches the logging handler. Mostly useful for
+      tests and notebooks -- most scripts never need to call this.
+          lightlogger.stop()
+
+  debug(msg, data=None)
+      Logs a debug-level message (grey in the UI).
+          lightlogger.debug("cache miss", data={"key": "user:42"})
+
+  info(msg, data=None)
+      Logs an info-level message (blue in the UI).
+          lightlogger.info("user logged in")
+
+  warn(msg, data=None)
+      Logs a warn-level message (yellow in the UI).
+          lightlogger.warn("retrying after timeout")
+
+  error(msg, data=None)
+      Logs an error-level message (red in the UI).
+          lightlogger.error("payment failed", data={"order_id": 123})
+
+  var(name, value)
+      Logs any variable as an expandable JSON blob under `name`.
+          lightlogger.var("cart", cart_dict)
+
+  request(method, url, status, duration_ms)
+      Logs one HTTP request/response as a single formatted line.
+          lightlogger.request("GET", "/api/users", 200, 12.4)
+
+  group(name)
+      Context manager that groups related log lines into a collapsible
+      tree in the UI. Nests, and is safe across threads and asyncio tasks
+      (each gets its own independent group context).
+          with lightlogger.group("process_order #4821"):
+              lightlogger.info("validating cart")
+              lightlogger.info("charging payment", data={"amount": 49.99})
+              with lightlogger.group("send_notifications"):
+                  lightlogger.info("email sent")
+
+Capturing stdlib `logging`
+---------------------------
+start(capture_logging=True) is the default: it attaches a handler to the
+root logger, so your existing `logging` calls -- and third-party
+libraries' -- appear in the dashboard automatically, with zero code
+changes.
+
+Gotcha: Python's root logger defaults to level WARNING. A plain
+`logging.info(...)` call will NOT appear unless your app has already
+raised the level itself, e.g. `logging.basicConfig(level=logging.INFO)`.
+lightlogger deliberately never forces the root logger's level open --
+doing so would also unmute your app's OTHER existing handlers, which is
+more disruptive than "zero code changes" is meant to be. `.warning()` and
+above always show up out of the box; `.debug()`/`.info()` need that one
+extra line if you want them too.
+
+Not for production
+-------------------
+Binds to 127.0.0.1 only by default. This is a local development tool, not
+a production observability system.
+
+Docs & source
+-------------
+  https://github.com/Rahuwale123/lightlogger
+"""
 
 _buffer = LogBuffer(maxlen=5000)
 _httpd: LightloggerServer | None = None
@@ -124,6 +213,11 @@ def request(method: str, url: str, status: int, duration_ms: float) -> None:
         f"{method} {url} {status} {duration_ms:.1f}ms",
         {"method": method, "url": url, "status": status, "duration_ms": duration_ms},
     )
+
+
+def help() -> None:
+    """Print a quick-reference cheatsheet of the public API to stdout."""
+    print(_HELP_TEXT)
 
 
 @contextmanager

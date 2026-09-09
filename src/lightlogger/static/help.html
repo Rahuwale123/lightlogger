@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>lightlogger docs</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171922'/%3E%3Crect x='3' y='4' width='10' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='7' width='7' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='10' width='9' height='2' rx='1' fill='%234da3ff'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    --accent: #9d8cff;
+    --group-accent: #2dd4bf;
+    --debug: #9aa0a6;
+    --info: #4da3ff;
+    --warn: #e0c341;
+    --error: #f05454;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background: #12141a;
+    color: #d6d9e0;
+    font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
+    line-height: 1.6;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #262a35;
+    background: #171922;
+    position: sticky;
+    top: 0;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #e6e9f0;
+  }
+  header a.home-link {
+    color: #9aa0a6;
+    text-decoration: none;
+    font-size: 12px;
+    border: 1px solid #262a35;
+    padding: 5px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  header a.home-link:hover {
+    background: #1c1f28;
+    color: #d6d9e0;
+  }
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+  }
+  h2 {
+    color: #e6e9f0;
+    font-size: 16px;
+    border-bottom: 1px solid #1c1f28;
+    padding-bottom: 6px;
+    margin-top: 44px;
+  }
+  h2:first-of-type {
+    margin-top: 0;
+  }
+  h3 {
+    color: var(--accent);
+    font-size: 13px;
+    margin: 0 0 4px;
+  }
+  p {
+    color: #d6d9e0;
+    font-size: 13px;
+  }
+  code {
+    background: #171922;
+    border: 1px solid #262a35;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 12px;
+  }
+  pre {
+    background: #171922;
+    border: 1px solid #262a35;
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 12px;
+    color: #d6d9e0;
+    margin: 8px 0 0;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .lede {
+    color: #9aa0a6;
+    font-size: 13px;
+  }
+  .fn-block {
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    border: 1px solid #1c1f28;
+    border-radius: 6px;
+    background: #14161d;
+  }
+  .level-debug { color: var(--debug); }
+  .level-info  { color: var(--info); }
+  .level-warn  { color: var(--warn); }
+  .level-error { color: var(--error); }
+  .group-name { color: var(--group-accent); }
+  .faq dt {
+    color: #e6e9f0;
+    font-weight: 600;
+    margin-top: 18px;
+    font-size: 13px;
+  }
+  .faq dd {
+    margin: 4px 0 0;
+    color: #9aa0a6;
+    font-size: 13px;
+  }
+  footer {
+    text-align: center;
+    color: #6b7280;
+    font-size: 12px;
+    padding: 24px 20px;
+    border-top: 1px solid #1c1f28;
+  }
+  a {
+    color: var(--accent);
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>lightlogger docs</h1>
+  <a class="home-link" href="/">&larr; Back to dashboard</a>
+</header>
+<main>
+
+<section id="quickstart">
+<h2>Quickstart</h2>
+<pre><code>pip install lightlogger</code></pre>
+<pre><code>import lightlogger
+lightlogger.start()          # UI now live at http://127.0.0.1:4356
+lightlogger.info("user logged in")</code></pre>
+<p class="lede">Two lines to a live, dark-theme log dashboard in your browser. Zero config, zero third-party dependencies.</p>
+</section>
+
+<section id="api">
+<h2>API reference</h2>
+
+<div class="fn-block">
+<h3><code>start(port=4356, host="127.0.0.1", max_logs=5000, capture_logging=True, open_browser=False)</code></h3>
+<p>Starts the dashboard server on a background thread. Calling it again while already running is a no-op, not an error.</p>
+<pre><code>lightlogger.start(port=8080, open_browser=True)</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>stop()</code></h3>
+<p>Stops the server and detaches the logging handler. Mostly useful for tests and notebooks &mdash; most scripts never need to call this.</p>
+<pre><code>lightlogger.stop()</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>debug(msg, data=None)</code></h3>
+<p>Logs a <span class="level-debug">debug</span>-level message.</p>
+<pre><code>lightlogger.debug("cache miss", data={"key": "user:42"})</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>info(msg, data=None)</code></h3>
+<p>Logs an <span class="level-info">info</span>-level message.</p>
+<pre><code>lightlogger.info("user logged in")</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>warn(msg, data=None)</code></h3>
+<p>Logs a <span class="level-warn">warn</span>-level message.</p>
+<pre><code>lightlogger.warn("retrying after timeout")</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>error(msg, data=None)</code></h3>
+<p>Logs an <span class="level-error">error</span>-level message.</p>
+<pre><code>lightlogger.error("payment failed", data={"order_id": 123})</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>var(name, value)</code></h3>
+<p>Logs any variable as an expandable JSON blob under <code>name</code>.</p>
+<pre><code>lightlogger.var("cart", cart_dict)</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>request(method, url, status, duration_ms)</code></h3>
+<p>Logs one HTTP request/response as a single formatted line.</p>
+<pre><code>lightlogger.request("GET", "/api/users", 200, 12.4)</code></pre>
+</div>
+
+<div class="fn-block">
+<h3><code>group(name)</code></h3>
+<p>Context manager that groups related log lines into a collapsible <span class="group-name">tree</span> in the UI. Nests, and is safe across threads and asyncio tasks &mdash; each gets its own independent group context.</p>
+<pre><code>with lightlogger.group("process_order #4821"):
+    lightlogger.info("validating cart")
+    lightlogger.info("charging payment", data={"amount": 49.99})
+    with lightlogger.group("send_notifications"):
+        lightlogger.info("email sent")
+        lightlogger.info("sms sent")</code></pre>
+<p>They render as a collapsible tree &mdash; click to expand, nested groups indent, a red badge appears if anything inside failed.</p>
+</div>
+
+</section>
+
+<section id="faq">
+<h2>FAQ</h2>
+<dl class="faq">
+  <dt>Port 4356 is already in use &mdash; what happens?</dt>
+  <dd>lightlogger auto-increments to the next free port (4357, 4358, &hellip;) and prints the actual bound URL to stdout. You never need to configure this yourself.</dd>
+
+  <dt>Why don't my <code>logging.info(...)</code> calls show up?</dt>
+  <dd><code>start(capture_logging=True)</code> (the default) attaches a handler to the root logger, but Python's root logger defaults to level <code>WARNING</code> &mdash; and lightlogger deliberately never forces that level open, since doing so would also unmute your app's other existing handlers, which is more disruptive than "zero code changes" is meant to be. Call <code>logging.basicConfig(level=logging.INFO)</code> yourself if you want <code>.debug()</code>/<code>.info()</code> calls to appear too; <code>.warning()</code> and above always show up out of the box.</dd>
+
+  <dt>Can I run this in production?</dt>
+  <dd>No. lightlogger binds to <code>127.0.0.1</code> only by default and is meant for local development. It is not an observability platform &mdash; don't run it against a public-facing process, and don't leave it running longer than your debugging session needs.</dd>
+
+  <dt>Will lightlogger run my app out of memory?</dt>
+  <dd>No &mdash; logs live in a fixed-size ring buffer (<code>collections.deque(maxlen=max_logs)</code>, default 5000). Once it's full, the oldest record is dropped for every new one that arrives, so memory use is bounded no matter how long your app runs.</dd>
+</dl>
+</section>
+
+</main>
+<footer>
+  <a href="https://github.com/Rahuwale123/lightlogger">github.com/Rahuwale123/lightlogger</a>
+</footer>
+</body>
+</html>

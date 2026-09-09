@@ -91,6 +91,24 @@ def test_index_route_serves_html() -> None:
     assert b"lightlogger" in body
 
 
+def test_help_route_serves_html_docs() -> None:
+    lightlogger.start()
+    status, body = _get(_bound_port(), "/help")
+    assert status == 200
+    text = body.decode("utf-8")
+    assert "lightlogger.group(" in text
+    assert "quickstart" in text.lower()
+    for name in ("start", "stop", "debug", "info", "warn", "error", "var", "request", "group"):
+        assert name in text
+
+
+def test_help_route_sets_html_content_type() -> None:
+    lightlogger.start()
+    with urllib.request.urlopen(_url(_bound_port(), "/help")) as resp:
+        assert resp.status == 200
+        assert resp.headers["Content-Type"] == "text/html; charset=utf-8"
+
+
 def test_unknown_route_is_404() -> None:
     lightlogger.start()
     with pytest.raises(urllib.error.HTTPError) as exc_info:

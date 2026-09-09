@@ -46,6 +46,8 @@ def _make_handler(buffer: LogBuffer, heartbeat_interval: float) -> type[BaseHTTP
         def do_GET(self) -> None:
             if self.path == "/":
                 self._serve_index()
+            elif self.path == "/help":
+                self._serve_help()
             elif self.path == "/api/logs":
                 self._serve_logs()
             elif self.path == "/api/stream":
@@ -67,6 +69,14 @@ def _make_handler(buffer: LogBuffer, heartbeat_interval: float) -> type[BaseHTTP
 
         def _serve_index(self) -> None:
             html = (importlib.resources.files("lightlogger") / "static" / "index.html").read_bytes()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html)))
+            self.end_headers()
+            self.wfile.write(html)
+
+        def _serve_help(self) -> None:
+            html = (importlib.resources.files("lightlogger") / "static" / "help.html").read_bytes()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html)))

@@ -5,16 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "lightlogger"
 version = "0.1.0"
-description = "Live web dashboard for your Python logs. Zero dependencies, two lines of code."
+description = "Live web dashboard for your Python logs — one line of code, zero dependencies"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [
     { name = "rahul wale", email = "fthedrive@gmail.com" },
 ]
-keywords = ["logging", "dashboard", "debugging", "developer-tools", "sse"]
+keywords = ["logging", "dashboard", "logs", "debugging", "developer-tools", "sse"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",

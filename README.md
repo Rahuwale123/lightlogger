@@ -7,7 +7,7 @@ Live web dashboard for your Python logs — pip install, add one line, open loca
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
-![lightlogger dashboard: a nested process_order group with a warning badge, a live error, and streaming request logs](assets/demo.gif)
+![lightlogger dashboard: a nested process_order group with a warning badge, a live error, and streaming request logs](https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif)
 
 ## Install
 
@@ -57,6 +57,17 @@ They render as a collapsible tree — click to expand, nested groups indent, a r
 | **Download as JSON** | One click, the full current backlog |
 | **Bounded memory** | A fixed-size ring buffer — lightlogger can never be the reason your app runs out of RAM |
 | **Zero dependencies** | Python standard library only, from the HTTP server to the JSON encoding |
+
+## Built-in help
+
+Forgot the API? It's in the package, not just this README:
+
+```python
+>>> import lightlogger
+>>> lightlogger.help()
+```
+
+Prints a full cheatsheet to your terminal — every function, one-line descriptions, tiny examples, the `capture_logging` gotcha, no need to leave your shell. And once the dashboard is running, open `http://127.0.0.1:4356/help` for the same reference as a page, with copyable code blocks.
 
 ## Why lightlogger
 
