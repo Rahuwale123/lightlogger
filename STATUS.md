@@ -1,6 +1,6 @@
-# lightlogger — status: PUBLISHED (v0.1.0 live on PyPI)
+# lightlogger — status: PUBLISHED (v0.1.1 live on PyPI)
 
-`pip install lightlogger` works, right now, for real. All 7 phases (plus the 6.5 grouping amendment and the 7.5 help/publish phase) are complete and shipped.
+`pip install lightlogger` works, right now, for real. All 7 phases (plus the 6.5 grouping amendment and the 7.5 help/publish phase) are complete and shipped. v0.1.1 is a same-day patch from dogfooding: `request()` now derives its log level from the HTTP status code (`<400` info, `4xx` warn, `5xx` error — a 500 no longer quietly logs as "info"), and the README gained a complete API reference table.
 
 ## Live links
 
@@ -25,7 +25,7 @@ Fresh venv → `pip install lightlogger` from real PyPI → confirmed zero runti
 
 ## Quality metrics (at publish time)
 
-- 100% test coverage (247/247 statements), 61 tests
+- 100% test coverage (252/252 statements), 69 tests
 - `ruff check` / `ruff format --check` / `mypy --strict` all clean
 - CI green on Python 3.9–3.13
 - Published via PyPI Trusted Publishing (OIDC) — no API token ever stored as a GitHub secret
