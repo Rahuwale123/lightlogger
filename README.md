@@ -2,10 +2,14 @@
 
 Live web dashboard for your Python logs — pip install, add one line, open localhost:4356. Zero dependencies.
 
+A live log viewer web UI you run from inside your own process: no separate server to install, no account, no config file — just a browser tab that tails your logs as they happen.
+
 [![PyPI](https://img.shields.io/pypi/v/lightlogger.svg)](https://pypi.org/project/lightlogger/)
 [![CI](https://github.com/Rahuwale123/lightlogger/actions/workflows/ci.yml/badge.svg)](https://github.com/Rahuwale123/lightlogger/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+
+📖 [Documentation](https://rahuwale123.github.io/lightlogger/)
 
 ![lightlogger dashboard: a nested process_order group with a warning badge, a live error, and streaming request logs](https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif)
 
@@ -58,6 +62,18 @@ They render as a collapsible tree — click to expand, nested groups indent, a r
 | **Bounded memory** | A fixed-size ring buffer — lightlogger can never be the reason your app runs out of RAM |
 | **Zero dependencies** | Python standard library only, from the HTTP server to the JSON encoding |
 
+## Works with
+
+lightlogger doesn't care what's generating your logs — it mirrors whatever reaches Python's root logger, so there's no framework-specific integration to write. It works equally well as a log dashboard for Flask, FastAPI, and Django apps as it does for a one-off script:
+
+| | How |
+|---|---|
+| **Plain scripts** | `lightlogger.start()` anywhere near the top — every `debug`/`info`/`warn`/`error` call and any existing `logging` call shows up |
+| **Flask** | Call `lightlogger.start()` once, e.g. in your app factory — Flask's own `app.logger` propagates to the root logger by default, so it appears with zero extra wiring |
+| **FastAPI** | Same idea in a startup event; pair it with `lightlogger.request(method, url, status_code, duration_ms)` in a middleware for color-coded, status-aware request logging |
+| **Django** | Call it from `settings.py` or an `AppConfig.ready()` — Django's own `LOGGING` config still applies, lightlogger just watches what comes out of it |
+| **Jupyter notebooks** | `lightlogger.start()` in a cell keeps the dashboard running on a background thread for the rest of the session; call `lightlogger.stop()` before restarting the kernel for a clean slate |
+
 ## API reference
 
 | Function | Description | Example |
@@ -96,7 +112,7 @@ Prints a full cheatsheet to your terminal — every function, one-line descripti
 
 ## Why lightlogger
 
-Debugging a running Python process usually means one of three things: `print()` statements you'll forget to remove, a terminal window full of scrolling text you can't search, or reaching for a heavyweight observability platform to answer a question that takes ten seconds to answer once you can actually *see* your logs.
+Debugging a running Python process usually means one of three things: `print()` statements you'll forget to remove, a terminal window full of scrolling text you can't search, or reaching for a heavyweight observability platform to answer a question that takes ten seconds to answer once you can actually *see* your logs. lightlogger is the alternative to print debugging that doesn't cost you anything to try: two lines, and you can view your Python logs in the browser instead of squinting at a terminal.
 
 We looked at what else exists. [Logdy](https://logdy.dev/) is a Go binary you install separately from your app. [Chronologer](https://github.com/nkconnor/chronologer) needs its own server process. [cutelog](https://github.com/busimus/cutelog) needs PyQt. Logfire is closed-source and cloud-hosted. `lnav` and `klp` are terminal-only. Django and Flask debug toolbars only work inside those specific frameworks, in that specific request/response cycle.
 
