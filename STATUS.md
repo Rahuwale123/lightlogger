@@ -1,20 +1,26 @@
-# lightlogger — status (Phase 1 of 7)
+# lightlogger — status (Phase 2 of 7)
 
-What exists right now: real in-memory logging (buffer + the six public logging functions), on top of the Phase 0 packaging/tooling skeleton. Still no HTTP server or UI — those come in Phase 2+.
+What exists right now: a real, running HTTP server. `lightlogger.start()` binds a live `ThreadingHTTPServer` and `/api/logs` returns real JSON — the first genuinely visible milestone. UI is still a placeholder page; live streaming isn't wired in yet.
 
 ## What actually works today
 
-- `debug()`, `info()`, `warn()`, `error()`, `var()`, `request()` all write real records into a bounded in-memory ring buffer — no more `NotImplementedError` on these six
-- Each record captures `{time, level, message, data, file, line, logger_name}`; file/line come from `sys._getframe` (never `inspect.stack()`, which would read source off disk on every call)
-- Ring buffer (`collections.deque(maxlen=5000)`) is verified bounded under load: flooding it with 20,000 log calls leaves exactly the most recent 5,000
-- Hot path measured at **~1.6 microseconds/call** (50,000 calls in 0.08s) — comfortably inside the "must return in microseconds" rule
-- SSE fan-out primitives (`subscribe`/`unsubscribe`/broadcast on `LogBuffer`) are built and unit-tested now, even though nothing consumes them until Phase 4's `/api/stream` — they're pure in-memory `queue.Queue` plumbing, easy to test in isolation without a server
-- `start()` / `stop()` still `raise NotImplementedError` — no server yet, so nothing is network-reachable
-- 17 tests passing (was 3 placeholders), `ruff check`, `ruff format --check`, and `mypy --strict` all clean
+- `lightlogger.start()` binds `127.0.0.1:4356` by default (auto-incrementing to the next free port on conflict), runs the server in a daemon thread, and prints `lightlogger UI → http://127.0.0.1:<port>`
+- `lightlogger.stop()` calls `shutdown()` + `server_close()` — the port is actually freed, confirmed by re-binding it with a raw socket right after stop
+- `GET /api/logs` returns the live ring buffer as JSON (`json.dumps(..., default=str)`, so arbitrary `data` objects never crash serialization); `GET /` serves the (still placeholder) `static/index.html`; anything else 404s
+- Binding is `127.0.0.1`-only by default; passing `host="0.0.0.0"` prints a loud warning before binding — verified in code (grep) and by triggering the warning path directly
+- Restart safety verified: `start()` → `stop()` → `start()` again in the same process works cleanly, no hang, no "address already in use"
+- Port auto-increment verified with two real, separate, concurrently-running processes: process A holds `4356`, process B auto-picks `4357`, each independently serves its own logs over real HTTP — no crash, no collision
+- `start()` is idempotent while already running (a no-op, not an error) — a judgment call not explicitly specified in the brief, covered by its own test
+- 23 tests passing (was 17), `ruff check`, `ruff format --check`, and `mypy --strict` all clean
+
+## What's deliberately not wired up yet
+
+- `max_logs`, `capture_logging`, `open_browser` params on `start()` are accepted (matching the public API signature) but not yet connected to anything — `max_logs` needs the Phase 1 buffer touched again, `capture_logging`/`LightloggerHandler` is Phase 5, `open_browser` has no assigned phase yet. Not forgotten, just sequenced.
+- `/api/stream` (SSE) and `/api/clear` are not built yet — Phase 4 and later. `/` and `/api/logs` only, per this phase's scope.
 
 ## What's set up around the code
 
-- **Layout:** `src/lightlogger/` (src-layout, Hatchling build backend); `buffer.py` now has real logic, `server.py`/`handler.py`/`sse.py` are still stubs, plus a placeholder `static/index.html`
+- **Layout:** `src/lightlogger/` (src-layout, Hatchling build backend); `buffer.py` and `server.py` now have real logic, `handler.py`/`sse.py` are still stubs, plus a placeholder `static/index.html`
 - **CI** (`.github/workflows/ci.yml`): runs the same lint/type/test gate on Python 3.9–3.13 on every push/PR
 - **Publish** (`.github/workflows/publish.yml`): builds + publishes to PyPI via Trusted Publishing (OIDC) when a GitHub Release is cut — no API token stored anywhere
 - **Docs:** MIT LICENSE, CHANGELOG (Keep a Changelog format), CONTRIBUTING.md, a placeholder README (real one written at Phase 7 with the demo GIF)
@@ -26,6 +32,6 @@ Original name `lightlog` was already taken on PyPI (an unrelated C++-backed logg
 
 ## Not built yet
 
-The HTTP server (Phase 2), the polling UI (Phase 3), live SSE streaming wired into a real server (Phase 4), stdlib `logging` capture (Phase 5), UI polish — search/filter/pause/export (Phase 6), and the real coverage target + README + PyPI publish (Phase 7).
+The polling UI (Phase 3), live SSE streaming wired into the server (Phase 4), stdlib `logging` capture (Phase 5), UI polish — search/filter/pause/export (Phase 6), and the real coverage target + README + PyPI publish (Phase 7).
 
 _Update this file at the end of each phase._
