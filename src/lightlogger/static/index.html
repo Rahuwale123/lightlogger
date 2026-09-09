@@ -7,6 +7,11 @@
 <style>
   :root {
     --accent: #9d8cff;
+    /* Group chrome gets its own accent, deliberately distinct from the four
+       level colors (severity) AND from --accent (interactive/active state),
+       so a group header never reads as "another log level" or "this control
+       is toggled on" -- it reads as "container/structure". */
+    --group-accent: #2dd4bf;
   }
   html, body {
     margin: 0;
@@ -173,6 +178,77 @@
     padding: 16px;
     color: #6b7280;
   }
+
+  /* --- Group tree (Phase 6.5) --- */
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 16px;
+    border-bottom: 1px solid #1c1f28;
+    background: rgba(45, 212, 191, 0.06);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .group-header:hover {
+    background: rgba(45, 212, 191, 0.12);
+  }
+  /* Same specificity trap as .row -- see note above .row[hidden]. */
+  .group-header[hidden] {
+    display: none;
+  }
+  .chevron {
+    flex: 0 0 auto;
+    display: inline-block;
+    vertical-align: middle;
+    color: var(--group-accent);
+    transform: rotate(0deg);
+    transition: transform 150ms ease;
+  }
+  .chevron.expanded {
+    transform: rotate(90deg);
+  }
+  .group-name {
+    flex: 1 1 auto;
+    color: var(--group-accent);
+    font-weight: 600;
+  }
+  .group-count {
+    flex: 0 0 auto;
+    color: #6b7280;
+    font-size: 12px;
+  }
+  /* Hidden by default via plain `display:none` (no [hidden] attribute
+     involved), toggled on by adding a badge-warn/badge-error class -- this
+     sidesteps the [hidden]-vs-author-stylesheet trap entirely for this one
+     element, instead of adding another override to keep track of. */
+  .group-badge {
+    display: none;
+    flex: 0 0 auto;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .group-badge.badge-warn {
+    display: inline-block;
+    color: #e0c341;
+    background: rgba(224, 195, 65, 0.15);
+  }
+  .group-badge.badge-error {
+    display: inline-block;
+    color: #f05454;
+    background: rgba(240, 84, 84, 0.15);
+  }
+  /* Nested indentation compounds on its own: each group's children container
+     adds its own padding/border, so a doubly-nested group is indented twice
+     without any depth*20px math in JS. */
+  .group-children {
+    padding-left: 20px;
+    margin-left: 8px;
+    border-left: 1px solid #232733;
+  }
 </style>
 </head>
 <body>
@@ -186,6 +262,8 @@
     <option value="warn">warn</option>
     <option value="error">error</option>
   </select>
+  <button id="expand-all-btn" type="button">Expand all</button>
+  <button id="collapse-all-btn" type="button">Collapse all</button>
   <button id="pause-btn" type="button">Pause</button>
   <button id="clear-btn" type="button">Clear</button>
   <button id="download-btn" type="button">Download</button>
@@ -202,6 +280,8 @@
   var statusDot = document.getElementById('status-dot');
   var searchInput = document.getElementById('search');
   var levelSelect = document.getElementById('level-filter');
+  var expandAllBtn = document.getElementById('expand-all-btn');
+  var collapseAllBtn = document.getElementById('collapse-all-btn');
   var pauseBtn = document.getElementById('pause-btn');
   var clearBtn = document.getElementById('clear-btn');
   var downloadBtn = document.getElementById('download-btn');
@@ -219,8 +299,19 @@
   var levelFilter = '';
   var paused = false;
   var pendingWhilePaused = [];
-  var allEntries = []; // every {row, detail, record, expanded} ever appended
   var logCount = 0;
+
+  // Tree registry (Phase 6.5). Replaces Phase 6's flat `allEntries`.
+  //   groupsById: group_id -> group node, flat, every depth -- lets
+  //     containerFor()/bumpLogCount()/bumpWorstLevel()/propagateVisible()
+  //     jump straight to a group by id instead of walking the DOM.
+  //   rootItems: top-level {type:'log'|'group', ref} entries in arrival
+  //     order, mirroring what's appended directly under #log. Each group
+  //     node carries its own `childItems` of the same shape for its direct
+  //     children -- together these mirror the actual DOM nesting and are
+  //     what a full refilter walks recursively.
+  var groupsById = {};
+  var rootItems = [];
 
   function sameRecord(a, b) {
     return (
@@ -268,21 +359,352 @@
     counterEl.textContent = logCount + ' logs';
   }
 
-  // Visible only if it passes both the search text AND the level filter.
-  // Also governs the detail panel: a filtered-out row's panel is force-hidden
-  // regardless of its own expand state, so it can't show orphaned below a
-  // hidden row.
-  function applyVisibility(entry) {
-    var matchesSearch = searchTerm === '' || entry.record.message.toLowerCase().indexOf(searchTerm) !== -1;
-    var matchesLevel = levelFilter === '' || entry.record.level === levelFilter;
-    var visible = matchesSearch && matchesLevel;
-    entry.row.hidden = !visible;
-    entry.detail.hidden = !visible || !entry.expanded;
+  // A search/level-filter change is "active" whenever either has a value --
+  // this is what gates auto-expand (a group only force-opens for a match
+  // while the person is actually searching/filtering).
+  function searchActive() {
+    return searchTerm !== '' || levelFilter !== '';
   }
 
+  // Plain log visibility rule, unchanged from Phase 6: must match both the
+  // search text AND the level filter.
+  function logMatches(record) {
+    var matchesSearch = searchTerm === '' || record.message.toLowerCase().indexOf(searchTerm) !== -1;
+    var matchesLevel = levelFilter === '' || record.level === levelFilter;
+    return matchesSearch && matchesLevel;
+  }
+
+  // A group's own row is never subject to the level filter (its `level` is
+  // the sentinel "group", not a real severity) -- only its name vs. the
+  // search text. Note this is trivially true whenever searchTerm is '',
+  // exactly mirroring Phase 6's "empty search matches everything" rule: a
+  // group header is never hidden by a level filter alone, only its
+  // non-matching descendants are.
+  function groupSelfMatches(record) {
+    return searchTerm === '' || record.message.toLowerCase().indexOf(searchTerm) !== -1;
+  }
+
+  function renderCount(node) {
+    node.countEl.textContent = '(' + node.logCount + ' logs)';
+  }
+
+  function renderBadge(node) {
+    if (node.worstLevel === 'error' || node.worstLevel === 'warn') {
+      node.badgeEl.textContent = node.worstLevel;
+      node.badgeEl.title = 'contains ' + node.worstLevel + '-level logs';
+      node.badgeEl.className = 'group-badge badge-' + node.worstLevel;
+    } else {
+      node.badgeEl.textContent = '';
+      node.badgeEl.removeAttribute('title');
+      node.badgeEl.className = 'group-badge';
+    }
+  }
+
+  // Applies a group node's own visible/expanded bookkeeping to its DOM.
+  // `manualState` is tri-state, not a plain boolean: `null` means the person
+  // has never clicked this group, so it defers to auto-expand-for-a-match;
+  // `true`/`false` means they explicitly chose, and that choice wins
+  // regardless of search state -- mirrors how search-results UIs like VS
+  // Code let you manually collapse a group even while it still contains a
+  // match. Only the `null` case falls back to auto-expand, and clearing the
+  // search naturally falls back to "collapsed by default" for any group
+  // that's still untouched.
+  function renderGroupState(node) {
+    var expanded = node.manualState !== null ? node.manualState : (searchActive() && node.childVisibleAny);
+    node.chevron.classList.toggle('expanded', expanded);
+    node.header.hidden = !node.visible;
+    node.children.hidden = !node.visible || !expanded;
+  }
+
+  // Full bottom-up recompute of visibility for one tree item, recursing into
+  // a group's children first so its childVisibleAny is always fresh before
+  // its own visible/expanded state is derived. Returns whether this item
+  // (in isolation) is visible, which is exactly what a parent needs to OR
+  // into its own childVisibleAny.
+  function visitItem(item) {
+    if (item.type === 'log') {
+      var entry = item.ref;
+      entry.visible = logMatches(entry.record);
+      entry.row.hidden = !entry.visible;
+      entry.detail.hidden = !entry.visible || !entry.expanded;
+      return entry.visible;
+    }
+    var node = item.ref;
+    var childVisibleAny = false;
+    for (var i = 0; i < node.childItems.length; i++) {
+      if (visitItem(node.childItems[i])) {
+        childVisibleAny = true;
+      }
+    }
+    node.childVisibleAny = childVisibleAny;
+    node.visible = groupSelfMatches(node.record) || childVisibleAny;
+    renderGroupState(node);
+    return node.visible;
+  }
+
+  // Same trigger points as Phase 6's flat refilterAll: every search-input or
+  // level-filter change, over the WHOLE tree (not just new arrivals).
   function refilterAll() {
-    for (var i = 0; i < allEntries.length; i++) {
-      applyVisibility(allEntries[i]);
+    for (var i = 0; i < rootItems.length; i++) {
+      visitItem(rootItems[i]);
+    }
+  }
+
+  // Incrementally informs the ancestor chain that one of its descendants
+  // just became visible, without rescanning the whole tree -- used only at
+  // insertion time (a full refilterAll() already does this correctly and
+  // unconditionally for every node). `already` is the ancestor's
+  // childVisibleAny BEFORE this call: if it was already true, that ancestor
+  // must already have propagated to ITS OWN parent earlier (whenever it
+  // first flipped true), so it's safe to stop climbing. If this ancestor was
+  // only visible via its own name match (childVisibleAny still false), we
+  // must keep climbing regardless, since a self-match alone never propagated
+  // upward before.
+  function propagateVisible(parentId, childVisible) {
+    if (!childVisible) {
+      return;
+    }
+    var pid = parentId;
+    while (pid !== null) {
+      var node = groupsById[pid];
+      if (!node) {
+        break;
+      }
+      var already = node.childVisibleAny;
+      node.childVisibleAny = true;
+      node.visible = groupSelfMatches(node.record) || true;
+      renderGroupState(node);
+      if (already) {
+        break;
+      }
+      pid = node.parentId;
+    }
+  }
+
+  // Recursive per-record log count (excludes group markers themselves) and
+  // the monotonic worst-level badge, each maintained by walking up the
+  // ancestor chain from a new record's direct parent -- cheap, no full-tree
+  // rescan needed on every tick.
+  function bumpLogCount(parentId) {
+    var pid = parentId;
+    while (pid !== null) {
+      var node = groupsById[pid];
+      if (!node) {
+        break;
+      }
+      node.logCount += 1;
+      renderCount(node);
+      pid = node.parentId;
+    }
+  }
+
+  var LEVEL_SEVERITY = { debug: 0, info: 0, warn: 1, error: 2 };
+
+  function bumpWorstLevel(parentId, level) {
+    var sev = LEVEL_SEVERITY[level] || 0;
+    if (sev === 0) {
+      return;
+    }
+    var pid = parentId;
+    while (pid !== null) {
+      var node = groupsById[pid];
+      if (!node) {
+        break;
+      }
+      var currentSev = LEVEL_SEVERITY[node.worstLevel] || 0;
+      if (sev <= currentSev) {
+        // Already at least this bad -- every ancestor above this one was
+        // already updated when that worse value first propagated.
+        break;
+      }
+      node.worstLevel = level;
+      renderBadge(node);
+      pid = node.parentId;
+    }
+  }
+
+  function containerFor(parentId) {
+    if (parentId === null) {
+      return logEl;
+    }
+    var node = groupsById[parentId];
+    return node ? node.children : logEl; // defensive fallback; shouldn't hit given marker-before-children ordering
+  }
+
+  function itemsListFor(parentId) {
+    if (parentId === null) {
+      return rootItems;
+    }
+    var node = groupsById[parentId];
+    return node ? node.childItems : rootItems;
+  }
+
+  function buildChevronSvg() {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '12');
+    svg.setAttribute('height', '12');
+    svg.setAttribute('class', 'chevron');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M5 3 L11 8 L5 13 Z');
+    path.setAttribute('fill', 'currentColor');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function buildGroupNode(record) {
+    var header = document.createElement('div');
+    header.className = 'group-header';
+
+    var chevron = buildChevronSvg();
+
+    var name = document.createElement('span');
+    name.className = 'group-name';
+    name.textContent = record.message;
+
+    var count = document.createElement('span');
+    count.className = 'group-count';
+
+    var badge = document.createElement('span');
+    badge.className = 'group-badge';
+
+    header.appendChild(chevron);
+    header.appendChild(name);
+    header.appendChild(count);
+    header.appendChild(badge);
+
+    var children = document.createElement('div');
+    children.className = 'group-children';
+
+    var node = {
+      id: record.group_id,
+      parentId: record.parent_group_id,
+      record: record,
+      header: header,
+      chevron: chevron,
+      countEl: count,
+      badgeEl: badge,
+      children: children,
+      childItems: [],
+      logCount: 0,
+      worstLevel: null,
+      manualState: null,
+      childVisibleAny: false,
+      visible: true
+    };
+
+    // Whole header row toggles collapse state -- a group header is not a
+    // plain row and never gains a detail panel of its own. Toggle against
+    // the CURRENTLY RENDERED state, then record that as an explicit choice:
+    // a group showing expanded only because a search match forced it open
+    // must still collapse on click (an OR-based "manual flag" can't express
+    // this, since search-driven expansion would keep winning regardless of
+    // the flag's value -- see renderGroupState's tri-state comment).
+    header.addEventListener('click', function () {
+      var currentlyExpanded = node.manualState !== null ? node.manualState : (searchActive() && node.childVisibleAny);
+      node.manualState = !currentlyExpanded;
+      renderGroupState(node);
+    });
+
+    renderCount(node);
+    renderBadge(node);
+    return node;
+  }
+
+  function buildLogEntry(record) {
+    var row = document.createElement('div');
+    row.className = 'row';
+
+    var time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = formatTime(record.time);
+
+    var level = document.createElement('span');
+    level.className = 'level ' + levelClass(record.level);
+    level.textContent = record.level;
+
+    var message = document.createElement('span');
+    message.className = 'message';
+    message.textContent = record.message;
+
+    row.appendChild(time);
+    row.appendChild(level);
+    row.appendChild(message);
+
+    var detail = buildDetailPanel(record);
+    var entry = { row: row, detail: detail, record: record, expanded: false, visible: true };
+
+    // Each row toggles its own panel independently -- a person may want to
+    // compare two expanded rows at once, so opening one must never close
+    // others. Visibility (entry.visible) only ever changes on insertion or a
+    // filter change, never on this click, so it's safe to reuse the cached
+    // value here instead of recomputing it against the current filters.
+    row.addEventListener('click', function () {
+      entry.expanded = !entry.expanded;
+      entry.detail.hidden = !entry.visible || !entry.expanded;
+    });
+
+    return entry;
+  }
+
+  // Single tree-insertion entry point for a NEW record (live SSE, a
+  // paused-flush replay, or a reconnect backlog diff) -- finds the record's
+  // parent container via parent_group_id, appends into it, updates ancestor
+  // counts/badges/visibility, and applies this record's own visibility
+  // immediately (consistent with Phase 6's rule that new rows are filtered
+  // at creation time, not left for the next filter-change event).
+  function insertRecord(record) {
+    if (emptyEl) {
+      emptyEl.remove();
+      emptyEl = null;
+    }
+
+    var parentId = record.parent_group_id;
+    var container = containerFor(parentId);
+    var itemsList = itemsListFor(parentId);
+
+    if (record.level === 'group') {
+      var node = buildGroupNode(record);
+      container.appendChild(node.header);
+      container.appendChild(node.children);
+      itemsList.push({ type: 'group', ref: node });
+      groupsById[node.id] = node;
+
+      node.visible = groupSelfMatches(node.record);
+      renderGroupState(node);
+      if (node.visible) {
+        propagateVisible(node.parentId, true);
+      }
+    } else {
+      var entry = buildLogEntry(record);
+      container.appendChild(entry.row);
+      container.appendChild(entry.detail);
+      itemsList.push({ type: 'log', ref: entry });
+
+      logCount += 1;
+      updateCounter();
+      bumpLogCount(parentId);
+      bumpWorstLevel(parentId, record.level);
+
+      entry.visible = logMatches(record);
+      entry.row.hidden = !entry.visible;
+      entry.detail.hidden = !entry.visible || !entry.expanded;
+      if (entry.visible) {
+        propagateVisible(parentId, true);
+      }
+    }
+
+    if (!paused) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  function setAllExpanded(expanded) {
+    for (var id in groupsById) {
+      if (Object.prototype.hasOwnProperty.call(groupsById, id)) {
+        groupsById[id].manualState = expanded;
+        renderGroupState(groupsById[id]);
+      }
     }
   }
 
@@ -314,54 +736,6 @@
     return detail;
   }
 
-  function appendRow(record) {
-    if (emptyEl) {
-      emptyEl.remove();
-      emptyEl = null;
-    }
-
-    var row = document.createElement('div');
-    row.className = 'row';
-
-    var time = document.createElement('span');
-    time.className = 'time';
-    time.textContent = formatTime(record.time);
-
-    var level = document.createElement('span');
-    level.className = 'level ' + levelClass(record.level);
-    level.textContent = record.level;
-
-    var message = document.createElement('span');
-    message.className = 'message';
-    message.textContent = record.message;
-
-    row.appendChild(time);
-    row.appendChild(level);
-    row.appendChild(message);
-
-    var detail = buildDetailPanel(record);
-    var entry = { row: row, detail: detail, record: record, expanded: false };
-
-    // Each row toggles its own panel independently -- a person may want to
-    // compare two expanded rows at once, so opening one must never close others.
-    row.addEventListener('click', function () {
-      entry.expanded = !entry.expanded;
-      applyVisibility(entry);
-    });
-
-    logEl.appendChild(row);
-    logEl.appendChild(detail);
-    allEntries.push(entry);
-    applyVisibility(entry);
-
-    logCount += 1;
-    updateCounter();
-
-    if (!paused) {
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-  }
-
   // Single entry point for any record arriving from the server (live SSE
   // message or a backlog-diff catch-up on reconnect): while paused, buffer it
   // instead of rendering it, so a person pausing to read never silently loses
@@ -373,7 +747,7 @@
       updatePauseButtonLabel();
       return;
     }
-    appendRow(record);
+    insertRecord(record);
   }
 
   function updatePauseButtonLabel() {
@@ -407,7 +781,8 @@
             // Buffer rotated past what we knew (or was cleared/resized):
             // we can't tell what's new, so re-render from scratch.
             logEl.innerHTML = '';
-            allEntries = [];
+            groupsById = {};
+            rootItems = [];
             startIndex = 0;
           } else {
             startIndex = matchIndex + 1;
@@ -455,6 +830,14 @@
     refilterAll();
   });
 
+  expandAllBtn.addEventListener('click', function () {
+    setAllExpanded(true);
+  });
+
+  collapseAllBtn.addEventListener('click', function () {
+    setAllExpanded(false);
+  });
+
   pauseBtn.addEventListener('click', function () {
     if (paused) {
       paused = false;
@@ -462,8 +845,12 @@
       pendingWhilePaused = [];
       pauseBtn.textContent = 'Pause';
       pauseBtn.classList.remove('active');
+      // Group markers always precede their children in arrival order (the
+      // server guarantees this), so replaying the buffer in order through
+      // the same tree-insertion path used for live records reconstructs the
+      // tree correctly -- no special-casing needed here.
       for (var i = 0; i < buffered.length; i++) {
-        appendRow(buffered[i]);
+        insertRecord(buffered[i]);
       }
     } else {
       paused = true;
@@ -482,7 +869,8 @@
           return;
         }
         logEl.innerHTML = '';
-        allEntries = [];
+        groupsById = {};
+        rootItems = [];
         pendingWhilePaused = [];
         lastSeen = null;
         logCount = 0;
