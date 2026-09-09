@@ -104,6 +104,25 @@ class TestLogBuffer:
             buf.add(make_record(str(i)))
         assert [r["message"] for r in buf.snapshot()] == ["a", "b", "0", "1", "2", "3", "4"]
 
+    def test_set_maxlen_zero_keeps_the_buffer_permanently_empty(self) -> None:
+        # maxlen=0 is a valid (if unusual) deque configuration: every append
+        # is immediately evicted, so the buffer never holds anything.
+        buf = LogBuffer(maxlen=10)
+        buf.add(make_record("will be evicted"))
+        buf.set_maxlen(0)
+        assert len(buf) == 0
+        buf.add(make_record("also evicted"))
+        assert len(buf) == 0
+        assert buf.snapshot() == []
+
+    def test_set_maxlen_negative_raises_value_error(self) -> None:
+        # deque(maxlen=-1) itself rejects negative bounds; set_maxlen doesn't
+        # add its own guard, so a caller passing e.g. start(max_logs=-1) sees
+        # this exact stdlib ValueError rather than silent misbehavior.
+        buf = LogBuffer(maxlen=10)
+        with pytest.raises(ValueError, match="maxlen must be non-negative"):
+            buf.set_maxlen(-1)
+
 
 def test_capture_caller_returns_this_file_and_line() -> None:
     line_before = sys._getframe().f_lineno

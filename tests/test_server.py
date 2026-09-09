@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from http.client import HTTPResponse
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -250,6 +250,28 @@ class TestApiStream:
         assert len(lightlogger._buffer._subscribers) == before
 
 
+class NotJSONSerializable:
+    """A plain object with no __str__: default object.__str__ falls back to
+    __repr__, which is still what json.dumps(..., default=str) will call."""
+
+    def __repr__(self) -> str:
+        return "<NotJSONSerializable sentinel>"
+
+
+def test_api_logs_never_crashes_on_a_genuinely_unserializable_data_object() -> None:
+    lightlogger.start()
+    # sets and arbitrary class instances are both real things users pass as
+    # `data` and neither is directly JSON-serializable -- default=str must
+    # carry both through rather than raising inside _serve_logs().
+    lightlogger.error("weird payload", data={"seen_ids": {1, 2, 3}, "obj": NotJSONSerializable()})
+    status, body = _get(_bound_port(), "/api/logs")
+    assert status == 200
+    records = json.loads(body)  # a crash in _serve_logs would abort the response entirely
+    matches = [r for r in records if r["message"] == "weird payload"]
+    assert len(matches) == 1
+    assert "NotJSONSerializable sentinel" in matches[0]["data"]["obj"]
+
+
 class TestApiClear:
     def test_post_clears_the_buffer_end_to_end(self) -> None:
         lightlogger.start()
@@ -272,6 +294,70 @@ class TestApiClear:
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             urllib.request.urlopen(req)
         assert exc_info.value.code == 404
+
+
+class TestHandleError:
+    def test_swallows_broken_pipe_and_connection_reset(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        buffer = LogBuffer()
+        httpd = create_server(buffer, "127.0.0.1", 0)
+        try:
+            for exc_type in (BrokenPipeError, ConnectionResetError):
+                try:
+                    raise exc_type("client went away")
+                except exc_type:
+                    httpd.handle_error(None, ("127.0.0.1", 12345))
+            # A disconnected client is not a server bug -- nothing should be
+            # printed to stderr for either exception type.
+            assert capsys.readouterr().err == ""
+        finally:
+            httpd.server_close()
+
+    def test_reraises_other_exceptions_to_the_default_handler(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        buffer = LogBuffer()
+        httpd = create_server(buffer, "127.0.0.1", 0)
+        try:
+            try:
+                raise ValueError("a genuine server bug")
+            except ValueError:
+                httpd.handle_error(None, ("127.0.0.1", 12345))
+            # Anything that isn't a client-disconnect error must still reach
+            # the default socketserver behavior (traceback to stderr) -- it
+            # must not be silently swallowed like the two exceptions above.
+            err = capsys.readouterr().err
+            assert "ValueError" in err
+            assert "a genuine server bug" in err
+        finally:
+            httpd.server_close()
+
+
+class TestHostWarning:
+    def test_binding_to_0_0_0_0_prints_a_loud_warning(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Don't actually bind 0.0.0.0 in a test (real LAN exposure, firewall
+        # prompts on some machines) -- create_server/serve_in_background are
+        # mocked out so this only exercises __init__.py's own warning branch.
+        fake_httpd = MagicMock()
+        fake_httpd.server_address = ("0.0.0.0", 4356)
+        with (
+            patch("lightlogger.create_server", return_value=fake_httpd) as mock_create,
+            patch("lightlogger.serve_in_background"),
+        ):
+            lightlogger.start(host="0.0.0.0")
+            mock_create.assert_called_once_with(lightlogger._buffer, "0.0.0.0", 4356)
+
+        out = capsys.readouterr().out
+        assert "WARNING" in out
+        assert "0.0.0.0" in out
+
+    def test_default_host_prints_no_warning(self, capsys: pytest.CaptureFixture[str]) -> None:
+        lightlogger.start()
+        out = capsys.readouterr().out
+        assert "WARNING" not in out
 
 
 class TestOpenBrowser:

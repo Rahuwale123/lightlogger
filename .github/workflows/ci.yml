@@ -32,5 +32,5 @@ jobs:
       - name: Type check with mypy
         run: mypy src/lightlogger
 
-      - name: Run tests
-        run: pytest -v
+      - name: Run tests with coverage
+        run: pytest -v --cov=lightlogger --cov-report=term-missing

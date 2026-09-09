@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Iterator
+from unittest.mock import patch
 
 import pytest
 
 import lightlogger
+from lightlogger.buffer import LogBuffer
 from lightlogger.handler import LightloggerHandler
 
 
@@ -85,3 +87,29 @@ def test_start_stop_start_does_not_double_attach() -> None:
     records = lightlogger._buffer.snapshot()
     matches = [r for r in records if r["message"] == "should appear exactly once"]
     assert len(matches) == 1
+
+
+def test_emit_swallows_a_bad_record_and_delegates_to_handle_error() -> None:
+    # record.getMessage() does `msg % args`; a real, common logging mistake
+    # (too few %-args for the format string) raises TypeError from inside
+    # emit()'s try block, before the record ever reaches the buffer. emit()
+    # must not propagate that into the app's logging call site -- it should
+    # be swallowed exactly like logging.Handler's own contract expects, via
+    # self.handleError(record).
+    buffer = LogBuffer()
+    handler = LightloggerHandler(buffer)
+    bad_record = logging.LogRecord(
+        name="broken",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="value: %s and %s",
+        args=("only_one",),
+        exc_info=None,
+    )
+
+    with patch.object(handler, "handleError") as mock_handle_error:
+        handler.emit(bad_record)
+
+    mock_handle_error.assert_called_once_with(bad_record)
+    assert len(buffer) == 0  # the failing record never made it into the buffer
