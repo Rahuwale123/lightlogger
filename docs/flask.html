@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Flask Integration — lightlogger</title>
+<meta name="description" content="How to wire lightlogger into a Flask app: start it once in your app factory, and log every request/response with before_request/after_request hooks." />
+<link rel="canonical" href="https://rahuwale123.github.io/lightlogger/flask.html" />
+<meta property="og:title" content="Flask Integration — lightlogger" />
+<meta property="og:description" content="An app-factory start() call, plus before_request/after_request hooks that call lightlogger.request() with the real elapsed time." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://rahuwale123.github.io/lightlogger/flask.html" />
+<meta property="og:image" content="https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171922'/%3E%3Crect x='3' y='4' width='10' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='7' width='7' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='10' width='9' height='2' rx='1' fill='%234da3ff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="index.html">lightlogger</a>
+  <nav class="site-nav">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html" aria-current="page">Flask</a>
+    <a href="faq.html">FAQ</a>
+  </nav>
+</header>
+<main>
+
+<h1>Flask integration</h1>
+<p class="lede">Flask's own <code>app.logger</code> propagates to the root logger by default, so if you just call <code>lightlogger.start()</code>, Flask's built-in request logging already shows up with zero extra wiring. For structured, color-coded request/response lines instead, add a small <code>before_request</code> / <code>after_request</code> pair.</p>
+
+<section id="start-once">
+<h2>1. Start lightlogger once</h2>
+<p>Call it in your application factory, before returning the app:</p>
+<pre><code>from flask import Flask
+
+import lightlogger
+
+
+def create_app():
+    lightlogger.start()
+
+    app = Flask(__name__)
+
+    # ... register blueprints, config, etc.
+
+    return app</code></pre>
+<p><code>start()</code> is a no-op if it's already running, so this is safe even if <code>create_app()</code> is called more than once (as some test setups do).</p>
+</section>
+
+<section id="hooks">
+<h2>2. Log every request with before/after hooks</h2>
+<p>Stash a start time on <code>flask.g</code> (request-scoped, so there's no shared state between concurrent requests) in <code>before_request</code>, then log the outcome in <code>after_request</code>:</p>
+<pre><code>import time
+
+from flask import g, request
+
+import lightlogger
+
+
+@app.before_request
+def _lightlogger_start_timer():
+    g.lightlogger_start = time.perf_counter()
+
+
+@app.after_request
+def _lightlogger_log_request(response):
+    duration_ms = (time.perf_counter() - g.lightlogger_start) * 1000
+    lightlogger.request(request.method, request.path, response.status_code, duration_ms)
+    return response</code></pre>
+<p><code>after_request</code> hooks must return the response object — Flask passes it straight through, so the middleware only observes it.</p>
+</section>
+
+<section id="level-mapping">
+<h2>How the log level is chosen</h2>
+<p><code>lightlogger.request(method, url, status, duration_ms)</code> derives its level from the status code, not something you set yourself:</p>
+<table>
+<tr><th>Status code</th><th>Level</th></tr>
+<tr><td><code>&lt; 400</code></td><td><span class="level-info">info</span></td></tr>
+<tr><td><code>4xx</code></td><td><span class="level-warn">warn</span></td></tr>
+<tr><td><code>5xx</code></td><td><span class="level-error">error</span></td></tr>
+</table>
+<p class="note">This status&rarr;level mapping shipped in v0.1.1. On earlier versions, <code>request()</code> always logged at <code>info</code> — upgrade to get failed requests rendered as warnings/errors automatically.</p>
+</section>
+
+<section id="full-example">
+<h2>Full example</h2>
+<pre><code>import time
+
+from flask import Flask, g, request
+
+import lightlogger
+
+
+def create_app():
+    lightlogger.start()
+
+    app = Flask(__name__)
+
+    @app.before_request
+    def _lightlogger_start_timer():
+        g.lightlogger_start = time.perf_counter()
+
+    @app.after_request
+    def _lightlogger_log_request(response):
+        duration_ms = (time.perf_counter() - g.lightlogger_start) * 1000
+        lightlogger.request(request.method, request.path, response.status_code, duration_ms)
+        return response
+
+    @app.route("/")
+    def index():
+        lightlogger.info("index route hit")
+        return {"status": "ok"}
+
+    return app</code></pre>
+</section>
+
+</main>
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html">FAQ</a>
+    <a href="https://github.com/Rahuwale123/lightlogger">GitHub</a>
+    <a href="https://pypi.org/project/lightlogger/">PyPI</a>
+  </div>
+  <p class="copyline">lightlogger — MIT licensed — zero dependencies</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rahuwale123.github.io/lightlogger/sitemap.xml

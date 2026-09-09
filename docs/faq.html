@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FAQ — lightlogger</title>
+<meta name="description" content="Answers to common lightlogger questions: port conflicts, why info/debug logs don't show up, whether it's safe for production, and how memory is bounded." />
+<link rel="canonical" href="https://rahuwale123.github.io/lightlogger/faq.html" />
+<meta property="og:title" content="FAQ — lightlogger" />
+<meta property="og:description" content="Port conflicts, the WARNING-level gotcha, the localhost-only security model, and memory bounds — explained." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://rahuwale123.github.io/lightlogger/faq.html" />
+<meta property="og:image" content="https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171922'/%3E%3Crect x='3' y='4' width='10' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='7' width='7' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='10' width='9' height='2' rx='1' fill='%234da3ff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="index.html">lightlogger</a>
+  <nav class="site-nav">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html" aria-current="page">FAQ</a>
+  </nav>
+</header>
+<main>
+
+<h1>Frequently asked questions</h1>
+
+<section id="ports">
+<h2>Port 4356 is already in use — what happens?</h2>
+<p>lightlogger auto-increments to the next free port (4357, 4358, &hellip;) and prints the actual bound URL to stdout. You never need to configure this yourself — it just works, and you always know the real URL because it's printed:</p>
+<pre><code>lightlogger UI → http://127.0.0.1:4357</code></pre>
+<p>Mechanically, <code>start()</code> tries to bind your requested <code>port</code>; if binding raises <code>OSError</code> (the port is busy), it retries with <code>port + 1</code>, and keeps incrementing until a bind succeeds. If you need a specific port and want a hard failure instead, pick one you know is free and don't rely on the fallback.</p>
+</section>
+
+<section id="warning-gotcha">
+<h2>Why don't my <code>lightlogger.info(...)</code> or <code>logging.info(...)</code> calls show up?</h2>
+<p><code>start(capture_logging=True)</code> (the default) attaches a handler to the root logger, but Python's root logger defaults to level <code>WARNING</code> — and lightlogger deliberately never forces that level open, since doing so would also unmute your app's other existing handlers, which is more disruptive than "zero code changes" is meant to be.</p>
+<p>Call <code>logging.basicConfig(level=logging.INFO)</code> yourself if you want <code>.debug()</code>/<code>.info()</code> calls to appear too; <code>.warning()</code> and above always show up out of the box, with no configuration needed.</p>
+<p class="note">This only affects logs routed through the standard <code>logging</code> module. Calls to <code>lightlogger.info()</code>/<code>lightlogger.debug()</code> directly always appear — they go straight into lightlogger's own buffer, not through the root logger's level filter.</p>
+</section>
+
+<section id="production">
+<h2>Can I run this in production, or expose it beyond my machine?</h2>
+<p>No, not as designed. lightlogger binds to <code>127.0.0.1</code> only by default, so nothing is reachable outside your machine unless you explicitly pass <code>host="0.0.0.0"</code> — which prints a loud warning when you do, precisely because it's an unusual, deliberate choice rather than a default.</p>
+<p>It's a local development tool, not a production observability platform: don't run it against a public-facing process, and don't leave it running longer than your debugging session needs. See <a href="https://github.com/Rahuwale123/lightlogger/blob/main/SECURITY.md">SECURITY.md</a> for the full threat model.</p>
+</section>
+
+<section id="memory">
+<h2>Will lightlogger run my app out of memory?</h2>
+<p>No — logs live in a fixed-size ring buffer (<code>collections.deque(maxlen=max_logs)</code>, default 5000). Once it's full, the oldest record is dropped for every new one that arrives, so memory use is bounded no matter how long your app runs or how much it logs.</p>
+<p>Raise or lower the bound with the <code>max_logs</code> parameter:</p>
+<pre><code>lightlogger.start(max_logs=20000)  # keep more history, still bounded</code></pre>
+</section>
+
+</main>
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html">FAQ</a>
+    <a href="https://github.com/Rahuwale123/lightlogger">GitHub</a>
+    <a href="https://pypi.org/project/lightlogger/">PyPI</a>
+  </div>
+  <p class="copyline">lightlogger — MIT licensed — zero dependencies</p>
+</footer>
+</body>
+</html>

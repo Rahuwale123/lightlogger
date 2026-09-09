@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>lightlogger — live web dashboard for Python logs</title>
+<meta name="description" content="lightlogger is a zero-dependency Python library that gives you a live, dark-theme web dashboard for your application logs. pip install, add one line, open localhost:4356." />
+<link rel="canonical" href="https://rahuwale123.github.io/lightlogger/" />
+<meta property="og:title" content="lightlogger — live web dashboard for Python logs" />
+<meta property="og:description" content="Zero-dependency Python library for a live, dark-theme web dashboard of your application logs. pip install, add one line, open localhost:4356." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://rahuwale123.github.io/lightlogger/" />
+<meta property="og:image" content="https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171922'/%3E%3Crect x='3' y='4' width='10' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='7' width='7' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='10' width='9' height='2' rx='1' fill='%234da3ff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="index.html">lightlogger</a>
+  <nav class="site-nav">
+    <a href="index.html" aria-current="page">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html">FAQ</a>
+  </nav>
+</header>
+<main>
+
+<section class="hero">
+  <h1>lightlogger</h1>
+  <p class="tagline">Live web dashboard for your Python logs — pip install, add one line, open localhost:4356. Zero dependencies.</p>
+
+  <pre class="install-cmd"><code>pip install lightlogger</code></pre>
+
+  <img class="demo-gif" src="https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif" alt="lightlogger dashboard showing a nested process_order group with a warning badge, a live error, and streaming request logs" width="640" />
+
+  <div class="cta-row">
+    <a class="primary" href="api.html">API reference</a>
+    <a href="fastapi.html">FastAPI guide</a>
+    <a href="flask.html">Flask guide</a>
+    <a href="faq.html">FAQ</a>
+    <a href="https://github.com/Rahuwale123/lightlogger">GitHub</a>
+  </div>
+</section>
+
+<section id="quickstart">
+<h2>Quickstart</h2>
+<pre><code>import lightlogger
+lightlogger.start()          # UI now live at http://127.0.0.1:4356
+lightlogger.info("user logged in")</code></pre>
+<p class="lede">Two lines to a live, dark-theme log dashboard in your browser. No config file, no separate server process, no npm install.</p>
+
+<p>Your existing <code>logging</code> calls show up too, with zero code changes:</p>
+<pre><code>lightlogger.start(capture_logging=True)  # the default
+import logging
+logging.getLogger("some.third.party.lib").warning("disk almost full")  # appears in the UI automatically</code></pre>
+
+<p>And when one log message is really several related operations, group them into a collapsible tree:</p>
+<pre><code>with lightlogger.group("process_order #4821"):
+    lightlogger.info("validating cart")
+    lightlogger.info("charging payment", data={"amount": 49.99})
+    with lightlogger.group("send_notifications"):
+        lightlogger.info("email sent")
+        lightlogger.info("sms sent")</code></pre>
+</section>
+
+<section id="features">
+<h2>Features</h2>
+<div class="feature-grid">
+  <div class="feature-card">
+    <h3>Live streaming</h3>
+    <p>Server-Sent Events, not polling — logs appear the instant they're written.</p>
+  </div>
+  <div class="feature-card">
+    <h3>Zero-code logging capture</h3>
+    <p>Attaches to the root logger; your own and third-party libraries' logs show up automatically.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="group-name">Nested log grouping</span></h3>
+    <p><code>with lightlogger.group(name):</code> — collapsible, nested, thread- and async-safe.</p>
+  </div>
+  <div class="feature-card">
+    <h3>Search &amp; level filter</h3>
+    <p>Client-side, instant, works across grouped and ungrouped logs alike.</p>
+  </div>
+  <div class="feature-card">
+    <h3>Pause / Resume</h3>
+    <p>Freeze the view to read something — nothing is dropped, a counter shows what's waiting.</p>
+  </div>
+  <div class="feature-card">
+    <h3>Bounded memory</h3>
+    <p>A fixed-size ring buffer — lightlogger can never be the reason your app runs out of RAM.</p>
+  </div>
+  <div class="feature-card">
+    <h3>Zero dependencies</h3>
+    <p>Python standard library only, from the HTTP server to the JSON encoding.</p>
+  </div>
+  <div class="feature-card">
+    <h3>Localhost by default</h3>
+    <p>Binds to <code>127.0.0.1</code> only; LAN exposure is an explicit, loudly-warned opt-in.</p>
+  </div>
+</div>
+</section>
+
+<section id="guides">
+<h2>Guides</h2>
+<ul>
+  <li><a href="api.html">API reference</a> — every public function, with examples.</li>
+  <li><a href="fastapi.html">FastAPI integration</a> — request logging middleware.</li>
+  <li><a href="flask.html">Flask integration</a> — before/after request hooks.</li>
+  <li><a href="faq.html">FAQ</a> — port conflicts, the WARNING-level gotcha, security, memory bounds.</li>
+</ul>
+</section>
+
+</main>
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html">FAQ</a>
+    <a href="https://github.com/Rahuwale123/lightlogger">GitHub</a>
+    <a href="https://pypi.org/project/lightlogger/">PyPI</a>
+  </div>
+  <p class="copyline">lightlogger — MIT licensed — zero dependencies</p>
+</footer>
+</body>
+</html>

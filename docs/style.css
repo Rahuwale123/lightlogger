@@ -1,0 +1,372 @@
+/* Shared stylesheet for the lightlogger docs site.
+   Reuses the exact dark theme and color tokens from
+   src/lightlogger/static/index.html and help.html so this feels like the
+   same product, not a different site. */
+
+:root {
+  --bg: #12141a;
+  --panel: #171922;
+  --panel-alt: #14161d;
+  --border: #262a35;
+  --border-soft: #1c1f28;
+  --text: #d6d9e0;
+  --text-bright: #e6e9f0;
+  --text-dim: #6b7280;
+  --text-muted: #9aa0a6;
+  --accent: #9d8cff;
+  --group-accent: #2dd4bf;
+  --debug: #9aa0a6;
+  --info: #4da3ff;
+  --warn: #e0c341;
+  --error: #f05454;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- Nav --- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.site-header .brand {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-header .brand:hover {
+  text-decoration: none;
+  color: var(--accent);
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.site-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.site-nav a:hover {
+  background: var(--border-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.site-nav a[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Layout --- */
+
+main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+.wide main {
+  max-width: 900px;
+}
+
+h1 {
+  color: var(--text-bright);
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+
+h2 {
+  color: var(--text-bright);
+  font-size: 17px;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 6px;
+  margin-top: 40px;
+}
+
+h2:first-of-type {
+  margin-top: 32px;
+}
+
+h3 {
+  color: var(--accent);
+  font-size: 13px;
+  margin: 20px 0 4px;
+}
+
+p {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.lede {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+ul,
+ol {
+  color: var(--text);
+  font-size: 13px;
+  padding-left: 22px;
+}
+
+li {
+  margin: 4px 0;
+}
+
+/* --- Code --- */
+
+code {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 12px;
+  color: var(--text);
+  margin: 8px 0 0;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* --- Building blocks reused across pages --- */
+
+.hero {
+  padding: 8px 0 4px;
+}
+
+.hero .tagline {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 4px 0 18px;
+}
+
+.install-cmd {
+  display: inline-block;
+  margin: 4px 0 20px;
+}
+
+.demo-gif {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 18px 0;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 4px;
+}
+
+.cta-row a {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 7px 14px;
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.cta-row a:hover {
+  background: var(--border-soft);
+  text-decoration: none;
+}
+
+.cta-row a.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 10px 0 0;
+}
+
+.feature-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--panel-alt);
+  padding: 12px 14px;
+}
+
+.feature-card h3 {
+  margin-top: 0;
+  color: var(--text-bright);
+  font-size: 13px;
+}
+
+.feature-card p {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.fn-block {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--panel-alt);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+th,
+td {
+  border: 1px solid var(--border-soft);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--panel);
+  color: var(--text-bright);
+}
+
+td code {
+  white-space: nowrap;
+}
+
+.level-debug {
+  color: var(--debug);
+}
+
+.level-info {
+  color: var(--info);
+}
+
+.level-warn {
+  color: var(--warn);
+}
+
+.level-error {
+  color: var(--error);
+}
+
+.group-name {
+  color: var(--group-accent);
+}
+
+.faq dt {
+  color: var(--text-bright);
+  font-weight: 600;
+  margin-top: 18px;
+  font-size: 13px;
+}
+
+.faq dd {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.note {
+  border-left: 3px solid var(--warn);
+  background: rgba(224, 195, 65, 0.08);
+  padding: 8px 12px;
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 10px 0 0;
+}
+
+/* --- Footer --- */
+
+.site-footer {
+  border-top: 1px solid var(--border-soft);
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.site-footer .footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.site-footer .footer-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.site-footer .footer-links a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.site-footer .copyline {
+  color: var(--text-dim);
+  font-size: 11px;
+}

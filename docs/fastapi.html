@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FastAPI Integration — lightlogger</title>
+<meta name="description" content="How to wire lightlogger into a FastAPI app: start it once via lifespan, and log every request/response with a timing middleware." />
+<link rel="canonical" href="https://rahuwale123.github.io/lightlogger/fastapi.html" />
+<meta property="og:title" content="FastAPI Integration — lightlogger" />
+<meta property="og:description" content="A lifespan hook to start lightlogger once, plus a request-timing middleware that calls lightlogger.request() on the way out." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://rahuwale123.github.io/lightlogger/fastapi.html" />
+<meta property="og:image" content="https://raw.githubusercontent.com/Rahuwale123/lightlogger/main/assets/demo.gif" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171922'/%3E%3Crect x='3' y='4' width='10' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='7' width='7' height='2' rx='1' fill='%234da3ff'/%3E%3Crect x='3' y='10' width='9' height='2' rx='1' fill='%234da3ff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="index.html">lightlogger</a>
+  <nav class="site-nav">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html" aria-current="page">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html">FAQ</a>
+  </nav>
+</header>
+<main>
+
+<h1>FastAPI integration</h1>
+<p class="lede">lightlogger has no framework-specific middleware built in — it doesn't need one, since it just watches Python's root logger. But request/response logging is common enough that it's worth a full example: start the dashboard once, and log every request with <code>lightlogger.request()</code>.</p>
+
+<section id="start-once">
+<h2>1. Start lightlogger once</h2>
+<p>Use FastAPI's <code>lifespan</code> context manager so the dashboard starts when the app starts, and (optionally) stops cleanly on shutdown:</p>
+<pre><code>from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+import lightlogger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    lightlogger.start()
+    yield
+    lightlogger.stop()
+
+
+app = FastAPI(lifespan=lifespan)</code></pre>
+<p>For a quick script or notebook, calling <code>lightlogger.start()</code> once at import time works just as well — <code>start()</code> is a no-op if it's already running, so there's no harm in being defensive about it.</p>
+</section>
+
+<section id="middleware">
+<h2>2. Log every request with a middleware</h2>
+<p>A <code>@app.middleware("http")</code> function wraps every request. Time it, call <code>call_next</code>, then log the result on the way out:</p>
+<pre><code>import time
+
+from fastapi import Request
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    lightlogger.request(request.method, request.url.path, response.status_code, duration_ms)
+    return response</code></pre>
+<p>That's the whole integration. Every request now shows up in the dashboard as a single line, color-coded by status code.</p>
+</section>
+
+<section id="level-mapping">
+<h2>How the log level is chosen</h2>
+<p><code>lightlogger.request(method, url, status, duration_ms)</code> derives its level from the status code you pass it — you don't choose it yourself:</p>
+<table>
+<tr><th>Status code</th><th>Level</th></tr>
+<tr><td><code>&lt; 400</code></td><td><span class="level-info">info</span></td></tr>
+<tr><td><code>4xx</code></td><td><span class="level-warn">warn</span></td></tr>
+<tr><td><code>5xx</code></td><td><span class="level-error">error</span></td></tr>
+</table>
+<p class="note">This status&rarr;level mapping shipped in v0.1.1. In earlier releases, <code>request()</code> always logged at <code>info</code> regardless of status code — if you're on an older version, upgrade to get failed requests showing up as warnings/errors in the dashboard automatically.</p>
+</section>
+
+<section id="full-example">
+<h2>Full example</h2>
+<pre><code>import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+
+import lightlogger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    lightlogger.start()
+    yield
+    lightlogger.stop()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    lightlogger.request(request.method, request.url.path, response.status_code, duration_ms)
+    return response
+
+
+@app.get("/")
+async def root():
+    lightlogger.info("root endpoint hit")
+    return {"status": "ok"}</code></pre>
+</section>
+
+</main>
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="fastapi.html">FastAPI</a>
+    <a href="flask.html">Flask</a>
+    <a href="faq.html">FAQ</a>
+    <a href="https://github.com/Rahuwale123/lightlogger">GitHub</a>
+    <a href="https://pypi.org/project/lightlogger/">PyPI</a>
+  </div>
+  <p class="copyline">lightlogger — MIT licensed — zero dependencies</p>
+</footer>
+</body>
+</html>
