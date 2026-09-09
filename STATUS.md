@@ -1,4 +1,4 @@
-# lightlogger — status (Phase 6.5 of 7 — log grouping, a scope amendment)
+# lightlogger — status (Phase 7 of 7 — final phase, repo made public)
 
 What exists right now: the full dashboard UI — search, level filter, pause/resume with no dropped records, clear, click-to-expand detail panels, JSON download, a real favicon, and `open_browser` wiring. This is the UI the eventual demo GIF will show.
 
@@ -26,18 +26,29 @@ Added `lightlogger.group(name)`, a nested-log-grouping context manager, and a fu
 - New teal/cyan accent (`#2dd4bf`) for group chrome only (chevron, group name, header tint) — kept distinct from the four level colors, the violet interactive accent, and the badge, which deliberately reuses the real warn/error colors since it's an aggregated severity signal, not a new meaning.
 - 43 tests passing (was 38), `ruff check`, `ruff format --check`, and `mypy --strict` all clean.
 
+## Phase 7 — coverage, docs, cross-version check, demo GIF, going public
+
+- **Test coverage: 100%** (235/235 statements), up from 98% — closed every previously-uncovered branch with real behavioral tests, not padding: `LightloggerHandler.emit()`'s except path, `handle_error()`'s full contract (swallows client-disconnect errors, still surfaces genuine bugs), the `host="0.0.0.0"` warning print, `LogBuffer.set_maxlen`'s boundary behavior, and `/api/logs` never crashing on a genuinely unserializable `data` object (a `set`, a plain class instance) — the actual requirement behind `json.dumps(..., default=str)`, not just a line-coverage checkbox. 55 tests total (was 43).
+- **Cross-version verified**: full quality gate run and passing identically on Python 3.10 (this project's `.venv`) and a throwaway Python 3.12 venv — no cross-version issues found. CI covers the full 3.9–3.13 matrix and now reports coverage on every run.
+- **Real demo GIF recorded** (`assets/demo.gif`, 14.8s, 640×404, 273KB — within CLAUDE.md's spec on all three constraints) from an actually-running server via Playwright screenshots stitched with `ffmpeg`: startup, a nested `process_order` group collecting a warning badge, a live error, streaming request logs, and the group-expand reveal. Not a mockup or staged screenshot.
+- **Fresh-venv install re-verified**: `pip install -e .` in a brand-new venv, zero runtime dependencies confirmed again, `lightlogger.group` importable.
+- **Final full-feature browser regression pass**: dark theme, connection dot, group tree with correct counts, search, level filter, pause/resume with count badge, expand-all/collapse-all, and plain-row detail-click all re-confirmed working together in one session, on top of everything already verified per-phase.
+- **README.md rewritten for real** per CLAUDE.md section 9's exact spec: one-liner → badges → demo GIF → 2-line quickstart (within the first ~200 words) → features table → "Why lightlogger" (the actual competitive-research story from section 1) → security note → contributing → MIT. 611 words.
+- **CHANGELOG.md finalized**: `[0.1.0] - 2026-09-09` now lists everything actually shipped; `[Unreleased]` keeps only genuine post-v1 ideas.
+- **Repo made public** at the owner's request, for manager review, after a full history scan for accidentally-committed secrets (API keys, tokens, private keys) came back clean.
+
 ## What's deliberately not wired up yet
 
 - `stop()` doesn't proactively close in-flight SSE connections — unchanged since Phase 4, not a correctness issue
-- No dedicated visual QA pass beyond this review (e.g. narrow-window/mobile layout wasn't stress-tested beyond confirming `flex-wrap` doesn't break outright)
+- **PyPI publish itself has NOT happened yet** — this requires cutting a GitHub Release, which is irreversible (a published version can never be re-uploaded, only yanked), so it's gated on the owner's explicit go-ahead rather than done automatically as part of this phase.
 
 ## What's set up around the code
 
-- **Layout:** `src/lightlogger/` (src-layout, Hatchling build backend) — every module has real logic now: `buffer.py`, `server.py`, `sse.py`, `handler.py`, `static/index.html`
-- **CI** (`.github/workflows/ci.yml`): runs the same lint/type/test gate on Python 3.9–3.13 on every push/PR
-- **Publish** (`.github/workflows/publish.yml`): builds + publishes to PyPI via Trusted Publishing (OIDC) when a GitHub Release is cut — no API token stored anywhere
-- **Docs:** MIT LICENSE, CHANGELOG (Keep a Changelog format), CONTRIBUTING.md, a placeholder README (real one written at Phase 7 with the demo GIF)
-- **Repo:** pushed to `https://github.com/Rahuwale123/lightlogger` (private)
+- **Layout:** `src/lightlogger/` (src-layout, Hatchling build backend) — every module has real logic: `buffer.py`, `server.py`, `sse.py`, `handler.py`, `static/index.html`
+- **CI** (`.github/workflows/ci.yml`): lint/type/test + coverage gate on Python 3.9–3.13 on every push/PR
+- **Publish** (`.github/workflows/publish.yml`): builds + publishes to PyPI via Trusted Publishing (OIDC) when a GitHub Release is cut — no API token stored anywhere; not yet triggered
+- **Docs:** MIT LICENSE, real README.md with demo GIF, finalized CHANGELOG.md, CONTRIBUTING.md
+- **Repo:** `https://github.com/Rahuwale123/lightlogger` — **public**
 
 ## Naming note
 
@@ -45,6 +56,6 @@ Original name `lightlog` was already taken on PyPI (an unrelated C++-backed logg
 
 ## Not built yet
 
-The real test-coverage target, README (with the demo GIF this UI is meant to star in), CHANGELOG finalization, and the PyPI publish itself — all Phase 7.
+The actual PyPI publish (`0.1.0` via a GitHub Release) — the one remaining Phase 7 item, gated on explicit owner confirmation since it's irreversible.
 
 _Update this file at the end of each phase._
