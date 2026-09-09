@@ -38,7 +38,7 @@ class LightloggerServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
-def _make_handler(buffer: LogBuffer) -> type[BaseHTTPRequestHandler]:
+def _make_handler(buffer: LogBuffer, heartbeat_interval: float) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:
             pass  # stay quiet on the user's stdout; they didn't ask for access logs
@@ -89,7 +89,7 @@ def _make_handler(buffer: LogBuffer) -> type[BaseHTTPRequestHandler]:
                 self.wfile.flush()
                 while True:
                     try:
-                        record = subscriber.get(timeout=HEARTBEAT_INTERVAL_SECONDS)
+                        record = subscriber.get(timeout=heartbeat_interval)
                     except Empty:
                         payload = sse.format_heartbeat()
                     else:
@@ -104,9 +104,14 @@ def _make_handler(buffer: LogBuffer) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def create_server(buffer: LogBuffer, host: str, port: int) -> LightloggerServer:
+def create_server(
+    buffer: LogBuffer,
+    host: str,
+    port: int,
+    heartbeat_interval: float = HEARTBEAT_INTERVAL_SECONDS,
+) -> LightloggerServer:
     """Bind a server, auto-incrementing past `port` on OSError (port busy)."""
-    handler_cls = _make_handler(buffer)
+    handler_cls = _make_handler(buffer, heartbeat_interval)
     while True:
         try:
             return LightloggerServer((host, port), handler_cls)

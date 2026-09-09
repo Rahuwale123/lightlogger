@@ -16,7 +16,8 @@ from http.client import HTTPResponse
 import pytest
 
 import lightlogger
-from lightlogger.server import HEARTBEAT_INTERVAL_SECONDS
+from lightlogger.buffer import LogBuffer
+from lightlogger.server import create_server, serve_in_background
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +26,16 @@ def _clean_slate() -> Iterator[None]:
     yield
     lightlogger.stop()
     lightlogger._buffer.clear()
+    # A test that opens /api/stream and closes the client side without
+    # waiting leaves its server-side thread blocked in subscriber.get() until
+    # its own heartbeat timeout notices the broken pipe -- previously masked
+    # by the old heartbeat test's real 15s sleep giving those stragglers time
+    # to time out on their own. Force the subscriber set empty between tests
+    # so a still-lingering entry from one test can never pollute the next
+    # test's subscriber-count assertions (the lock matches how buffer.py
+    # guards this same set elsewhere).
+    with lightlogger._buffer._lock:
+        lightlogger._buffer._subscribers.clear()
 
 
 def _url(port: int, path: str) -> str:
@@ -177,22 +188,35 @@ class TestApiStream:
             resp.close()
 
     def test_sends_a_heartbeat_comment_within_the_heartbeat_interval(self) -> None:
-        lightlogger.start()
-        resp = _open_stream(_bound_port(), timeout=HEARTBEAT_INTERVAL_SECONDS + 10.0)
+        # A throwaway server with a fast heartbeat_interval, built directly via
+        # create_server()/serve_in_background() rather than lightlogger.start():
+        # start() intentionally has no heartbeat_interval param (frozen public
+        # API), so this is the one place that bypasses it. Keeps this test
+        # from genuinely waiting the real 15s production interval.
+        fast_interval = 0.2
+        buffer = LogBuffer()
+        httpd = create_server(buffer, "127.0.0.1", 0, heartbeat_interval=fast_interval)
+        serve_in_background(httpd)
+        port = int(httpd.server_address[1])
         try:
-            resp.readline()  # retry: 3000
-            resp.readline()  # blank line
+            resp = _open_stream(port, timeout=fast_interval + 5.0)
+            try:
+                resp.readline()  # retry: 3000
+                resp.readline()  # blank line
 
-            heartbeat_line = b""
-            for _ in range(5):  # bounded: never read indefinitely
-                line = resp.readline()
-                if line.startswith(b":"):
-                    heartbeat_line = line
-                    break
-            assert heartbeat_line == b": ping\n"
-            assert resp.readline() == b"\n"
+                heartbeat_line = b""
+                for _ in range(5):  # bounded: never read indefinitely
+                    line = resp.readline()
+                    if line.startswith(b":"):
+                        heartbeat_line = line
+                        break
+                assert heartbeat_line == b": ping\n"
+                assert resp.readline() == b"\n"
+            finally:
+                resp.close()
         finally:
-            resp.close()
+            httpd.shutdown()
+            httpd.server_close()
 
     def test_disconnecting_unsubscribes_the_client_and_does_not_leak(self) -> None:
         lightlogger.start()

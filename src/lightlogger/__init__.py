@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any
 
 from lightlogger.buffer import LogBuffer, LogRecord, capture_caller
+from lightlogger.handler import LightloggerHandler
 from lightlogger.server import LightloggerServer, create_server, serve_in_background
 
 __version__ = "0.1.0"
@@ -25,6 +27,7 @@ __all__ = [
 _buffer = LogBuffer(maxlen=5000)
 _httpd: LightloggerServer | None = None
 _thread: threading.Thread | None = None
+_logging_handler: LightloggerHandler | None = None
 
 
 def _emit(level: str, message: str, data: Any = None, *, logger_name: str = "lightlogger") -> None:
@@ -50,7 +53,7 @@ def start(
     capture_logging: bool = True,
     open_browser: bool = False,
 ) -> None:
-    global _httpd, _thread
+    global _httpd, _thread, _logging_handler
     if _httpd is not None:
         return  # already running; start() is idempotent, not an error
 
@@ -67,9 +70,16 @@ def start(
     bound_port = _httpd.server_address[1]
     print(f"lightlogger UI → http://{host}:{bound_port}")
 
+    if capture_logging:
+        _logging_handler = LightloggerHandler(_buffer)
+        logging.getLogger().addHandler(_logging_handler)
+
 
 def stop() -> None:
-    global _httpd, _thread
+    global _httpd, _thread, _logging_handler
+    if _logging_handler is not None:
+        logging.getLogger().removeHandler(_logging_handler)
+        _logging_handler = None
     if _httpd is None:
         return
     _httpd.shutdown()
