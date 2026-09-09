@@ -1,18 +1,22 @@
-"""Real server tests (Phase 2): start a real ThreadingHTTPServer, hit it over
-HTTP with urllib, and confirm stop()/start() cycles cleanly.
+"""Real server tests (Phase 2/4): start a real ThreadingHTTPServer, hit it
+over HTTP with urllib (including the raw SSE wire protocol on /api/stream),
+and confirm stop()/start() cycles cleanly.
 """
 
 from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from http.client import HTTPResponse
 
 import pytest
 
 import lightlogger
+from lightlogger.server import HEARTBEAT_INTERVAL_SECONDS
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +40,16 @@ def _bound_port() -> int:
     httpd = lightlogger._httpd
     assert httpd is not None
     return int(httpd.server_address[1])
+
+
+def _open_stream(port: int, timeout: float = 5.0) -> HTTPResponse:
+    # A bounded socket timeout on every SSE connection a test opens: /api/stream
+    # is a genuinely long-lived response, and without this a bug that stops
+    # the server writing would hang the read (and the whole test run) forever
+    # instead of failing loudly.
+    resp = urllib.request.urlopen(_url(port, "/api/stream"), timeout=timeout)
+    assert isinstance(resp, HTTPResponse)
+    return resp
 
 
 def test_start_prints_url_and_binds_default_port() -> None:
@@ -115,3 +129,91 @@ def test_max_logs_is_applied_to_the_buffer_end_to_end() -> None:
     assert len(records) == 100
     assert records[0]["message"] == "log 400"
     assert records[-1]["message"] == "log 499"
+
+
+class TestApiStream:
+    def test_sets_sse_headers(self) -> None:
+        lightlogger.start()
+        resp = _open_stream(_bound_port())
+        try:
+            assert resp.headers["Content-Type"] == "text/event-stream"
+            assert resp.headers["Cache-Control"] == "no-cache"
+        finally:
+            resp.close()
+
+    def test_sends_retry_directive_first_as_a_double_newline_frame(self) -> None:
+        lightlogger.start()
+        resp = _open_stream(_bound_port())
+        try:
+            assert resp.readline() == b"retry: 3000\n"
+            assert resp.readline() == b"\n"
+        finally:
+            resp.close()
+
+    def test_emits_a_new_log_record_as_a_data_frame(self) -> None:
+        lightlogger.start()
+        resp = _open_stream(_bound_port())
+        try:
+            resp.readline()  # retry: 3000
+            resp.readline()  # blank line closing the retry frame
+            # Reading those two lines guarantees the server already reached
+            # buffer.subscribe() (it writes the retry line only after
+            # subscribing), so this record can't be missed by a race.
+            lightlogger.info("streamed live", data={"ok": True})
+
+            data_line = b""
+            for _ in range(5):  # bounded: never read indefinitely
+                line = resp.readline()
+                if line.startswith(b"data: "):
+                    data_line = line
+                    break
+            assert data_line.startswith(b"data: ")
+            record = json.loads(data_line[len(b"data: ") :])
+            assert record["message"] == "streamed live"
+            assert record["data"] == {"ok": True}
+            # Mandatory double-newline framing: a blank line must follow.
+            assert resp.readline() == b"\n"
+        finally:
+            resp.close()
+
+    def test_sends_a_heartbeat_comment_within_the_heartbeat_interval(self) -> None:
+        lightlogger.start()
+        resp = _open_stream(_bound_port(), timeout=HEARTBEAT_INTERVAL_SECONDS + 10.0)
+        try:
+            resp.readline()  # retry: 3000
+            resp.readline()  # blank line
+
+            heartbeat_line = b""
+            for _ in range(5):  # bounded: never read indefinitely
+                line = resp.readline()
+                if line.startswith(b":"):
+                    heartbeat_line = line
+                    break
+            assert heartbeat_line == b": ping\n"
+            assert resp.readline() == b"\n"
+        finally:
+            resp.close()
+
+    def test_disconnecting_unsubscribes_the_client_and_does_not_leak(self) -> None:
+        lightlogger.start()
+        before = len(lightlogger._buffer._subscribers)
+
+        resp = _open_stream(_bound_port())
+        resp.readline()  # retry: 3000
+        resp.readline()  # blank line
+        assert len(lightlogger._buffer._subscribers) == before + 1
+
+        resp.close()  # simulate the browser tab closing
+
+        # The server thread only discovers the closed socket on its next
+        # write attempt (a heartbeat up to HEARTBEAT_INTERVAL_SECONDS away, or
+        # sooner if something is logged), so nudge it with new records and
+        # poll briefly rather than asserting instantly.
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            lightlogger.info("nudge for disconnect detection")
+            if len(lightlogger._buffer._subscribers) == before:
+                break
+            time.sleep(0.05)
+
+        assert len(lightlogger._buffer._subscribers) == before

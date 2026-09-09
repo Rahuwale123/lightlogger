@@ -13,6 +13,9 @@
     font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
   }
   header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 10px 16px;
     border-bottom: 1px solid #262a35;
     background: #171922;
@@ -22,6 +25,18 @@
     font-size: 14px;
     font-weight: 600;
     color: #e6e9f0;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+  }
+  .status-connected {
+    background: #3ecf6e;
+  }
+  .status-reconnecting {
+    background: #f05454;
   }
   #log {
     height: calc(100vh - 42px);
@@ -66,6 +81,7 @@
 <body>
 <header>
   <h1>lightlogger</h1>
+  <span id="status-dot" class="status-dot status-reconnecting" title="connecting…"></span>
 </header>
 <div id="log">
   <p id="empty">Waiting for logs…</p>
@@ -74,6 +90,7 @@
 (function () {
   var logEl = document.getElementById('log');
   var emptyEl = document.getElementById('empty');
+  var statusDot = document.getElementById('status-dot');
   // Identifies the last record we've already rendered, so a poll can append
   // just the new tail. Compared by value (no id field on LogRecord) rather
   // than by array length: /api/logs is a bounded ring buffer, so once it's
@@ -128,7 +145,11 @@
     logEl.appendChild(row);
   }
 
-  function poll() {
+  // Fetches the full backlog and appends only what's new since lastSeen,
+  // same value-based diffing Phase 3 used for polling. Called once on page
+  // load and again on every SSE (re)connect, so a dropped connection can't
+  // silently lose records that arrived while the stream was down.
+  function refreshBacklog() {
     fetch('/api/logs')
       .then(function (res) { return res.json(); })
       .then(function (records) {
@@ -156,7 +177,7 @@
         }
 
         if (startIndex >= records.length) {
-          return; // nothing new since last poll
+          return; // nothing new since last refresh
         }
 
         if (emptyEl) {
@@ -170,12 +191,50 @@
         logEl.scrollTop = logEl.scrollHeight;
       })
       .catch(function () {
-        // server may be mid-restart; next poll will retry
+        // server may be mid-restart; next connect/refresh will retry
       });
   }
 
-  poll();
-  setInterval(poll, 2000);
+  function setConnected(connected) {
+    if (!statusDot) {
+      return;
+    }
+    statusDot.className = connected ? 'status-dot status-connected' : 'status-dot status-reconnecting';
+    statusDot.title = connected ? 'connected' : 'reconnecting…';
+  }
+
+  function handleStreamMessage(event) {
+    var record;
+    try {
+      record = JSON.parse(event.data);
+    } catch (e) {
+      return; // malformed frame; drop it rather than crash the page
+    }
+    if (emptyEl) {
+      emptyEl.remove();
+      emptyEl = null;
+    }
+    appendRow(record);
+    lastSeen = record;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // EventSource auto-reconnects on its own (driven by the server's
+  // `retry: 3000`), firing onopen again each time it does. That single event
+  // covers both "page just loaded" and "just reconnected after a drop": both
+  // cases want the same thing, a fresh /api/logs backlog fetch before more
+  // records stream in.
+  var eventSource = new EventSource('/api/stream');
+  eventSource.onopen = function () {
+    setConnected(true);
+    refreshBacklog();
+  };
+  eventSource.onerror = function () {
+    // Fires both for a genuine error and while the browser is silently
+    // retrying; either way the connection isn't currently usable.
+    setConnected(false);
+  };
+  eventSource.onmessage = handleStreamMessage;
 })();
 </script>
 </body>
