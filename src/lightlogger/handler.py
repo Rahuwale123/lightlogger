@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from lightlogger.buffer import LogBuffer, LogRecord
+from lightlogger.buffer import LogBuffer, LogRecord, _current_group_id
 
 _LEVEL_NAMES = {
     logging.DEBUG: "debug",
@@ -32,6 +32,8 @@ class LightloggerHandler(logging.Handler):
                 "file": record.pathname,
                 "line": record.lineno,
                 "logger_name": record.name,
+                "group_id": None,
+                "parent_group_id": _current_group_id.get(),
             }
             self._buffer.add(log_record)
         except Exception:

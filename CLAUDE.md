@@ -4,6 +4,8 @@ You (Claude Code) are the developer of this project. The owner is a solo student
 
 > **Naming note:** the product was originally conceived as "lightlog" but that name is taken on PyPI. The distribution/import name is **`lightlogger`** everywhere below (PyPI verified free on 2026-09-09).
 
+> **Scope amendment (post-Phase 6, 2026-09-09):** log grouping (`lightlogger.group(name)`) was added to the frozen v1 API as **Phase 6.5**, before Phase 7. This is a deliberate exception to golden rule "exactly this, nothing more" — the owner evaluated it as a real differentiator (no competing zero-dep local dashboard has nested log grouping) rather than scope creep, and chose to formalize it here rather than build it as an undocumented add-on. See the new API entry in section 5, the amended record structure in section 3, section 6.5, and Phase 6.5 in section 7.
+
 ---
 
 ## 1. WHAT WE ARE BUILDING
@@ -67,7 +69,13 @@ Two lines to a live, beautiful, dark-theme log dashboard in the browser. Zero co
 ### stdlib logging integration (killer feature — must have in v1)
 - Ship `LightloggerHandler(logging.Handler)` whose `emit(record)` pushes into the buffer + SSE queues.
 - `lightlogger.start(capture_logging=True)` attaches it to the root logger → user's EXISTING `logging` calls and even third-party library logs appear in the UI with zero code changes.
-- Record structure: `{time, level, message, data, file, line, logger_name}`.
+- Record structure (amended in Phase 6.5): `{time, level, message, data, file, line, logger_name, group_id, parent_group_id}`. `group_id`/`parent_group_id` are always-present keys (never omitted), typed `str | None` — every field defaults to `None` for code untouched by `group()`, so this is a value-level amendment, not a structural one. No `typing.NotRequired`/`typing_extensions` — that would violate zero-dependency on Python 3.9/3.10, where `NotRequired` doesn't exist in stdlib `typing`.
+
+### Log grouping (`lightlogger.group(name)`) — Phase 6.5
+- A context manager: `with lightlogger.group("process_order #123"): ...`. On enter, emits one group-marker record immediately (so even an empty group is visible); on exit, restores the previous group context. Nesting supported (a `group()` inside a `group()`).
+- A group-marker record is just a normal `LogRecord` with `group_id` set to a fresh id (e.g. `uuid.uuid4().hex`) and `message` set to the group's display name. Every OTHER record (marker or plain log) gets `parent_group_id` set to whatever group directly contains it (`None` if top-level) — this is how nesting and containment are reconstructed client-side, by walking `parent_group_id` chains.
+- Thread/async safety via `contextvars.ContextVar` (stdlib) holding "the current group id" — NOT a plain module global, which would leak across threads. Each thread that doesn't explicitly share context gets its own independent value; each asyncio `Task` gets its own copy at creation. This is what makes concurrent, non-interleaving grouping possible without extra locking.
+- Group-marker records stream over `/api/stream` and appear in `/api/logs` exactly like any other record — no special-casing needed in `buffer.py`/`server.py`, since `LogBuffer.add()` already treats every record uniformly.
 
 ### Packaging the UI
 - One file: `src/lightlogger/static/index.html` (HTML + CSS + JS inline).
@@ -132,6 +140,7 @@ lightlogger.warn(msg, data=None)
 lightlogger.error(msg, data=None)
 lightlogger.var(name, value)                          # logs any variable as expandable JSON
 lightlogger.request(method, url, status, duration_ms) # API/request logging
+lightlogger.group(name)                               # context manager; nested groups supported (Phase 6.5)
 ```
 
 HTTP routes: `/` (UI), `/api/logs` (JSON backlog), `/api/stream` (SSE), `/api/clear` (POST, clears buffer).
@@ -146,6 +155,15 @@ Must have in v1: dark theme (default), color-coded levels (debug grey, info blue
 
 Style: clean, modern, monospace font for messages, subtle borders, feels like a premium dev tool. No external fonts/CDNs (zero network deps — must work offline).
 
+## 6.5. UI REQUIREMENTS — log grouping (Phase 6.5)
+
+- A group-marker record renders as a collapsible header row, not a normal log line: chevron/dropdown icon (inline SVG, no icon fonts, no CDN — same offline constraint as everything else), group name, child count, and a "worst-level" hint (e.g. a red tint/badge if any descendant is `error`-level) — computed client-side by walking descendants, no new server logic needed.
+- Nested groups indent their children (mirrors the browser DevTools `console.group`/`console.groupEnd` UX — a familiar reference point, not an arbitrary accordion pattern). Chevron rotates on toggle — this is user-triggered motion answering a click, not ambient decoration, so it's fine alongside the existing single ambient motion moment (the reconnecting-dot pulse from Phase 6).
+- Collapsed by default. Toolbar gains expand-all / collapse-all buttons.
+- Search/filter must work across grouped records: a match on a nested record auto-expands its ancestor chain so the match is visible; a group the user manually expanded/collapsed keeps that state once the search is cleared (search-driven expansion doesn't overwrite a person's own manual choice).
+- Visual theme gets richer/more colorful for this phase specifically — level colors (debug/info/warn/error) stay meaningful and unchanged, but group-related chrome (headers, chevrons, badges) can use more vivid accents than Phase 6's restrained palette, as a deliberate one-time exception to "keep it restrained."
+- Still one file, no CDN, fully offline, zero third-party dependencies.
+
 ---
 
 ## 7. BUILD PHASES (do IN ORDER, one phase per session, test before moving on)
@@ -157,6 +175,7 @@ Style: clean, modern, monospace font for messages, subtle borders, feels like a 
 - **Phase 4:** SSE — `/api/stream`, EventSource, live updates, heartbeat, reconnect. Remove polling.
 - **Phase 5:** LightloggerHandler + `capture_logging` + file/line capture via `sys._getframe`.
 - **Phase 6:** Full UI polish — search, filters, pause, clear, expand, download, status dot.
+- **Phase 6.5:** Log grouping — `lightlogger.group(name)` context manager (contextvars-based, thread/async-safe, nested), amended record structure, UI collapsible group rows with expand/collapse-all and search-aware auto-expand. Scope amendment, see note at top of this file.
 - **Phase 7:** Tests to ~80% coverage, CI green on 3.9–3.13, mypy strict passes, README + demo GIF, publish 0.1.0 via Trusted Publishing.
 
 ---
@@ -192,6 +211,7 @@ Length 500–1500 words. GIF: <15s, ~640px, <8MB, stored in /assets. Add a secur
 - [ ] RAM bounded (deque maxlen honored under log flood)
 - [ ] Binds 127.0.0.1 only by default; warning on override
 - [ ] Search/filter/pause/clear/expand/download all work
+- [ ] `lightlogger.group()` nests correctly and stays isolated across concurrent threads
 - [ ] Survives: port conflict, browser refresh, SSE reconnect, `stop()` + `start()` again
 - [ ] Tests pass 3.9–3.13, mypy strict clean, ruff clean
 - [ ] README with GIF, CHANGELOG, published on PyPI via Trusted Publishing

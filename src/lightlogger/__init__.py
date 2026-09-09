@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import uuid
 import webbrowser
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
-from lightlogger.buffer import LogBuffer, LogRecord, capture_caller
+from lightlogger.buffer import LogBuffer, LogRecord, _current_group_id, capture_caller
 from lightlogger.handler import LightloggerHandler
 from lightlogger.server import LightloggerServer, create_server, serve_in_background
 
@@ -23,6 +26,7 @@ __all__ = [
     "error",
     "var",
     "request",
+    "group",
 ]
 
 _buffer = LogBuffer(maxlen=5000)
@@ -43,6 +47,8 @@ def _emit(level: str, message: str, data: Any = None, *, logger_name: str = "lig
         "file": file,
         "line": line,
         "logger_name": logger_name,
+        "group_id": None,
+        "parent_group_id": _current_group_id.get(),
     }
     _buffer.add(record)
 
@@ -118,3 +124,32 @@ def request(method: str, url: str, status: int, duration_ms: float) -> None:
         f"{method} {url} {status} {duration_ms:.1f}ms",
         {"method": method, "url": url, "status": status, "duration_ms": duration_ms},
     )
+
+
+@contextmanager
+def group(name: str) -> Iterator[None]:
+    group_id = uuid.uuid4().hex
+    parent_group_id = _current_group_id.get()
+    # skip=3: capture_caller's own frame, this generator's frame (resumed by
+    # @contextmanager's __enter__ via next()), and contextlib's
+    # _GeneratorContextManager.__enter__ itself -> lands on the user's
+    # `with lightlogger.group(...):` call site. Verified empirically in
+    # tests/test_buffer.py (test_group_captures_caller_file_and_line).
+    file, line = capture_caller(skip=3)
+    record: LogRecord = {
+        "time": time.time(),
+        "level": "group",
+        "message": name,
+        "data": None,
+        "file": file,
+        "line": line,
+        "logger_name": "lightlogger",
+        "group_id": group_id,
+        "parent_group_id": parent_group_id,
+    }
+    _buffer.add(record)
+    token = _current_group_id.set(group_id)
+    try:
+        yield
+    finally:
+        _current_group_id.reset(token)

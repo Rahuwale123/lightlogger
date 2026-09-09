@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import sys
 import threading
 from collections import deque
@@ -17,6 +18,8 @@ class LogRecord(TypedDict):
     file: str
     line: int
     logger_name: str
+    group_id: str | None
+    parent_group_id: str | None
 
 
 def capture_caller(skip: int) -> tuple[str, int]:
@@ -24,6 +27,17 @@ def capture_caller(skip: int) -> tuple[str, int]:
     # off disk on every call, which is too slow for a logging hot path.
     frame = sys._getframe(skip)
     return frame.f_code.co_filename, frame.f_lineno
+
+
+# Holds "the current group id" per thread/async-task, not a plain module
+# global (which would leak across threads). Lives here rather than in
+# __init__.py because handler.py needs it too (so plain logging.info() calls
+# made inside a group() block nest correctly), and handler.py already
+# imports from buffer.py -- importing from __init__.py instead would risk a
+# circular import.
+_current_group_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "lightlogger_current_group_id", default=None
+)
 
 
 class LogBuffer:
